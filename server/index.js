@@ -1,6 +1,7 @@
 const express = require("express");
 const app = express();
-const PORT = 5000;
+require("dotenv").config();
+const PORT = process.env.PORT;
 app.use(express.json());
 app.get("/hello", (req, res) => res.send("jkbfsjfh"));
 app.listen(PORT, () => {

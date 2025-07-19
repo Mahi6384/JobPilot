@@ -5,13 +5,8 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const app = express();
- userSchema
 const PORT = process.env.PORT || 5000;
 
-
-require("dotenv").config();
-const PORT = process.env.PORT;
-main
 app.use(express.json());
 
 // MongoDB connection

@@ -1,20 +1,11 @@
 const express = require("express");
 const mongoose = require("mongoose");
+const jobRoutes = require("./routes/jobRoutes");
 const dotenv = require("dotenv");
-
 dotenv.config();
-
 const app = express();
- userSchema
-const PORT = process.env.PORT || 5000;
-
-
-require("dotenv").config();
-const PORT = process.env.PORT;
-main
 app.use(express.json());
-
-// MongoDB connection
+const PORT = process.env.PORT || 5000;
 mongoose
   .connect(process.env.MONGODB_URI)
   .then(() => {
@@ -23,11 +14,9 @@ mongoose
   .catch((error) => {
     console.error("MongoDB connection failed:", error.message);
   });
-
-
-app.get("/hello", (req, res) => res.send("Hello from Khushi’s server!"));
-
+app.get("/hi", (req, res) => res.send("Hello from Mahi server!"));
+app.use("/api/jobs", jobRoutes);
 
 app.listen(PORT, () => {
-  console.log(`Server is running at: http://localhost:${PORT}`);
+  console.log("Server is running at: http://localhost:${PORT}");
 });

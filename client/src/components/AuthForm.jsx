@@ -4,10 +4,10 @@ function AuthForm({ heading, btnText, newUser, TextUnderHeading }) {
   return (
     <div className="font-montserrat">
       <div className="min-h-screen w-full h-screen flex items-center justify-center bg-gray-950 ">
-        <div className="w-[80%] max-w-6xl  text-white flex h-5/6 rounded-3xl  bg-stone-800/20  shadow-blue-900 shadow-[0_4px_40px_0px_rgba(0,0,0,0.1)] ">
+        <div className="w-[80%] max-w-6xl  text-white flex h-5/6 rounded-3xl  bg-stone-800/20  shadow-blue-900 shadow-[0_4px_40px_0px_rgba(0,0,0,0.1)]">
           {/* left */}
           <section className="flex flex-col flex-1 min-w-[350px] p-12 justify-center">
-            <h1 className="text-3xl  font-bold leading-tight mb-1 select-none">
+            <h1 className="text-3xl  font-bold leading-tight mt-2 select-none">
               {heading}
             </h1>
             <p className="text-sm font-light opacity-85 mb-8 select-none">
@@ -58,12 +58,15 @@ function AuthForm({ heading, btnText, newUser, TextUnderHeading }) {
                   placeholder="Password"
                   className="rounded-md px-4 py-2 text-black placeholder-gray-500 shadow-inner focus:shadow-[inset_0_0_10px_#131a25]"
                 />
-                <a
-                  href="#"
-                  className="text-xs text-white underline mt-1 self-end select-none"
-                >
-                  Forgot Password
-                </a>
+                {!newUser && (
+                  <a
+                    href="#"
+                    className="text-xs text-white underline mt-1 self-end select-none"
+                  >
+                    Forgot Password
+                  </a>
+                )}
+                {newUser && <a className="mt-6 " />}
               </div>
 
               <button

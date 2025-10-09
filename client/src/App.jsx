@@ -8,8 +8,8 @@ import Profile from "./pages/Profile";
 function App() {
   return (
     <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/signup" element={<SignUp />} />
+      {/* <Route path="/" element={<Home />} /> */}
+      <Route path="/" element={<SignUp />} />
       <Route path="/login" element={<Login />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/profile" element={<Profile />} />

@@ -4,9 +4,10 @@ function SignUp() {
   return (
     <>
       <AuthForm
-        heading={"Welcome in JobPilot"}
+        // className="pt-32  "
+        // heading={"Welcome in JobPilot"}
         btnText={"Sign Up"}
-        TextUnderHeading={"Create an Account"}
+        // TextUnderHeading={"Create an Account"}
         passwordDes={"Create a password"}
         newUser
       />

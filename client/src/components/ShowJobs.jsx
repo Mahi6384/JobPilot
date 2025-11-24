@@ -10,8 +10,18 @@ function ShowJobs() {
 
   async function getJob() {
     try {
-      const response = await axios.get("http://localhost:5000/api/jobs");
-      setJobs(response.data.data);
+      setLoading(true);
+      setError(null);
+      const token = localStorage.getItem("token");
+      const response = await axios.get("http://localhost:5000/api/jobs", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.data && response.data.data) {
+        setJobs(response.data.data);
+      } else {
+        setJobs([]);
+      }
     } catch (error) {
       console.error("Error fetching jobs:", error);
       if (error.response) {
@@ -36,6 +46,7 @@ function ShowJobs() {
       setLoading(false);
     }
   }
+
   useEffect(() => {
     getJob();
     // Refresh jobs every 5 seconds to catch updates after scraping
@@ -160,17 +171,26 @@ function ShowJobs() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-12 font-montserrat font-medium">
       {jobs.map((jobCard, index) => (
-        <div key={index} className="flex flex-col items-center">
-          <div className="bg-white/80 w-full max-w-sm  text-black p-8 rounded-t-md">
-            {/* <div className="bg-gray-950 w-full max-w-sm shadow-[0_0_10px_2px_theme(colors.blue.900)] text-blue-600 p-8 rounded-t-md"> */}
+        <div key={jobCard._id || index} className="flex flex-col items-center">
+          <div className="bg-white/80 w-full max-w-sm text-black p-8 rounded-t-md">
             <p className="truncate">Name : {jobCard.title}</p>
             <p className="truncate">Company : {jobCard.companyName}</p>
             <p className="truncate">Location : {jobCard.location}</p>
             <p className="truncate">Experience : {jobCard.experience}</p>
+            {jobCard.applied && (
+              <p className="text-green-600 font-semibold mt-2">✓ Applied</p>
+            )}
           </div>
-          <button className="w-full max-w-sm bg-white/60 text-gray-950 text-lg py-3 rounded-b-md">
-            {/* <button className="w-full max-w-sm shadow-[0_3px_15px_2px_theme(colors.blue.900)] bg-blue-900 text-gray-950 text-lg py-3 rounded-b-md"> */}
-            Apply
+          <button
+            onClick={() => handleApply(jobCard._id, jobCard.jobUrl)}
+            disabled={applying[jobCard._id] || jobCard.applied}
+            className="w-full max-w-sm bg-white/60 hover:bg-white/80 disabled:bg-gray-400 text-gray-950 text-lg py-3 rounded-b-md transition-colors"
+          >
+            {applying[jobCard._id]
+              ? "Applying..."
+              : jobCard.applied
+              ? "Already Applied"
+              : "Apply"}
           </button>
         </div>
       )}

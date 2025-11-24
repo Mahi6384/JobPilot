@@ -28,4 +28,7 @@ dist-ssr
 .env.local
 .env.*.local
 
+# Browser data (cookies, sessions)
+jobpilot/server/browser-data/
+
 

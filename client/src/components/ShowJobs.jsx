@@ -6,6 +6,7 @@ function ShowJobs() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [applying, setApplying] = useState({});
+  const [applyingAll, setApplyingAll] = useState(false);
 
   async function getJob() {
     try {
@@ -29,10 +30,14 @@ function ShowJobs() {
         } else if (error.response.status === 404) {
           setError("No jobs found. Please scrape jobs first.");
         } else {
-          setError(`Error: ${error.response.data.message || error.response.status}`);
+          setError(
+            `Error: ${error.response.data.message || error.response.status}`
+          );
         }
       } else if (error.request) {
-        setError("Cannot connect to server. Make sure the server is running on port 5000.");
+        setError(
+          "Cannot connect to server. Make sure the server is running on port 5000."
+        );
       } else {
         setError(`Error: ${error.message}`);
       }
@@ -44,16 +49,23 @@ function ShowJobs() {
 
   useEffect(() => {
     getJob();
+    // Refresh jobs every 5 seconds to catch updates after scraping
+    const interval = setInterval(() => {
+      getJob();
+    }, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleApply = async (jobId, jobUrl) => {
     try {
       if (!jobUrl) {
-        alert("Job URL not available. Please scrape jobs again to get updated job links.");
+        alert(
+          "Job URL not available. Please scrape jobs again to get updated job links."
+        );
         return;
       }
 
-      setApplying({ ...applying, [jobId]: true });
+      setApplying((prev) => ({ ...prev, [jobId]: true }));
       const token = localStorage.getItem("token");
 
       const response = await axios.post(
@@ -75,7 +87,52 @@ function ShowJobs() {
         alert("Cannot connect to server.");
       }
     } finally {
-      setApplying({ ...applying, [jobId]: false });
+      setApplying((prev) => ({ ...prev, [jobId]: false }));
+    }
+  };
+
+  const handleApplyAll = async () => {
+    try {
+      const unappliedJobs = jobs.filter((job) => !job.applied);
+      if (unappliedJobs.length === 0) {
+        alert("No unapplied jobs available.");
+        return;
+      }
+
+      const confirmApply = window.confirm(
+        `Are you sure you want to apply to all ${unappliedJobs.length} jobs?`
+      );
+      if (!confirmApply) {
+        return;
+      }
+
+      setApplyingAll(true);
+      const token = localStorage.getItem("token");
+
+      const response = await axios.post(
+        "http://localhost:5000/api/jobs/auto-apply",
+        { limit: unappliedJobs.length },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      alert(
+        `Auto-apply completed! Applied to ${response.data.applied} out of ${response.data.total} jobs.`
+      );
+      // Refresh jobs to update applied status
+      getJob();
+    } catch (error) {
+      console.error("Error applying to all jobs:", error);
+      if (error.response) {
+        alert(
+          `Error: ${error.response.data.message || "Failed to apply to all jobs"}`
+        );
+      } else {
+        alert("Cannot connect to server.");
+      }
+    } finally {
+      setApplyingAll(false);
     }
   };
 
@@ -104,7 +161,9 @@ function ShowJobs() {
   if (jobs.length === 0) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
-        <p className="text-white text-xl">No jobs available. Please scrape jobs first.</p>
+        <p className="text-white text-xl">
+          No jobs available. Please scrape jobs first.
+        </p>
       </div>
     );
   }
@@ -134,7 +193,7 @@ function ShowJobs() {
               : "Apply"}
           </button>
         </div>
-      ))}
+      )}
     </div>
   );
 }

@@ -1,72 +1,104 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
 const Navbar = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [username, setUsername] = useState('');
+  const [user, setUser] = useState(null);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const user = JSON.parse(localStorage.getItem('user'));
-    if (user) {
+  const checkAuth = () => {
+    const token = localStorage.getItem("token");
+    const userData = JSON.parse(localStorage.getItem("user"));
+    if (token && userData) {
       setIsLoggedIn(true);
-      setUsername(user.name);
+      setUser(userData);
+    } else {
+      setIsLoggedIn(false);
+      setUser(null);
     }
+  };
+
+  useEffect(() => {
+    checkAuth();
+    window.addEventListener("authChange", checkAuth);
+    window.addEventListener("storage", checkAuth);
+    return () => {
+      window.removeEventListener("authChange", checkAuth);
+      window.removeEventListener("storage", checkAuth);
+    };
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('user');
-    setIsLoggedIn(false);
-    setUsername('');
-    navigate('/login');
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    window.dispatchEvent(new Event("authChange"));
+    navigate("/login");
   };
 
   return (
-    <nav className="bg-gray-800 p-4">
-      <div className="container mx-auto flex justify-between items-center">
-        <Link to="/" className="text-white text-lg font-bold">
+    <nav className="fixed top-0 left-0 w-full z-50 bg-gray-950/80 backdrop-blur-md border-b border-white/5 font-montserrat">
+      <div className="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center text-white">
+        <Link
+          to="/"
+          className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent hover:opacity-80 transition-opacity"
+        >
           JobPilot
         </Link>
-        <ul className="flex space-x-4 items-center">
-          {isLoggedIn ? (
-            <>
-              <li>
-                <span className="text-white">Welcome, {username}!</span>
-              </li>
-              <li>
-                <Link to="/dashboard" className="text-white hover:text-gray-300">
-                  Dashboard
-                </Link>
-              </li>
-              <li>
-                <Link to="/profile" className="text-white hover:text-gray-300">
-                  Profile
-                </Link>
-              </li>
-              <li>
+
+        <div className="flex items-center gap-8">
+          <ul className="hidden md:flex items-center gap-6 text-sm font-medium opacity-80">
+            {isLoggedIn && (
+              <>
+                <li>
+                  <Link to="/dashboard" className="hover:text-blue-400 transition-colors">
+                    Dashboard
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/profile" className="hover:text-blue-400 transition-colors">
+                    Profile
+                  </Link>
+                </li>
+              </>
+            )}
+            <li>
+              <Link to="/" className="hover:text-blue-400 transition-colors">
+                Support
+              </Link>
+            </li>
+          </ul>
+
+          <div className="flex items-center gap-4 pl-6 border-l border-white/10">
+            {isLoggedIn ? (
+              <div className="flex items-center gap-4">
+                <div className="flex items-center justify-center w-10 h-10 rounded-full border-2 border-blue-500/50 bg-blue-500/10 text-blue-400 font-bold text-lg cursor-default select-none transition-transform hover:scale-110">
+                  {user?.email?.charAt(0).toUpperCase() || "U"}
+                </div>
                 <button
                   onClick={handleLogout}
-                  className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded"
+                  className="bg-white/10 hover:bg-red-500/20 hover:text-red-400 text-white px-5 py-2 rounded-full text-sm font-semibold transition-all duration-300 border border-white/10"
                 >
                   Logout
                 </button>
-              </li>
-            </>
-          ) : (
-            <>
-              <li>
-                <Link to="/login" className="text-white hover:text-gray-300">
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <Link
+                  to="/login"
+                  className="px-5 py-2 rounded-full text-sm font-semibold hover:bg-white/5 transition-all"
+                >
                   Login
                 </Link>
-              </li>
-              <li>
-                <Link to="/signup" className="text-white hover:text-gray-300">
+                <Link
+                  to="/signup"
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-full text-sm font-semibold shadow-lg shadow-blue-900/40 transition-all active:scale-95"
+                >
                   Sign Up
                 </Link>
-              </li>
-            </>
-          )}
-        </ul>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </nav>
   );

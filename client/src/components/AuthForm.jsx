@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { GoogleLogin } from "@react-oauth/google";
 import googleIcon from "../assets/googleIcon.svg";
 
 function AuthForm({ heading, btnText, newUser, TextUnderHeading, passwordDes }) {
@@ -31,6 +32,9 @@ function AuthForm({ heading, btnText, newUser, TextUnderHeading, passwordDes }) 
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
 
+      // Dispatch event to notify Navbar
+      window.dispatchEvent(new Event("authChange"));
+
       // Redirect based on onboarding status
       if (response.data.user.onboardingStatus === "initial") {
         navigate("/onboarding");
@@ -47,9 +51,39 @@ function AuthForm({ heading, btnText, newUser, TextUnderHeading, passwordDes }) 
     }
   };
 
-  const handleGoogleAuth = async () => {
-    // Implement Google OAuth
-    alert("Google Auth - To be implemented");
+  const handleGoogleAuthSuccess = async (credentialResponse) => {
+    setLoading(true);
+    try {
+      const response = await axios.post(`http://localhost:5000/api/auth/google`, {
+        credential: credentialResponse.credential,
+      });
+
+      // Store token
+      localStorage.setItem("token", response.data.token);
+      localStorage.setItem("user", JSON.stringify(response.data.user));
+
+      // Dispatch event to notify Navbar
+      window.dispatchEvent(new Event("authChange"));
+
+      // Redirect based on onboarding status
+      if (response.data.user.onboardingStatus === "initial") {
+        navigate("/onboarding");
+      } else if (response.data.user.onboardingStatus === "profile_completed") {
+        navigate("/connect-naukri");
+      } else {
+        navigate("/dashboard");
+      }
+    } catch (error) {
+      console.error("Google Auth error:", error);
+      alert(error.response?.data?.message || "Google Authentication failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleAuthError = () => {
+    console.error("Google Login Failed");
+    alert("Login Failed. Please try again.");
   };
 
   return (
@@ -123,13 +157,13 @@ function AuthForm({ heading, btnText, newUser, TextUnderHeading, passwordDes }) 
             </form>
 
             <div className="flex justify-center gap-7 my-8">
-              <button
-                type="button"
-                onClick={handleGoogleAuth}
-                className="w-10 h-10 rounded-full flex items-center justify-center"
-              >
-                <img src={googleIcon} alt="Google" />
-              </button>
+              <GoogleLogin
+                onSuccess={handleGoogleAuthSuccess}
+                onError={handleGoogleAuthError}
+                useOneTap
+                theme="filled_black"
+                shape="circle"
+              />
             </div>
 
             {newUser && (

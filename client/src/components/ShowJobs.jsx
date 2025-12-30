@@ -193,7 +193,7 @@ function ShowJobs() {
               : "Apply"}
           </button>
         </div>
-      )}
+      ))}
     </div>
   );
 }

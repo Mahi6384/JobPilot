@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import ShowJobs from "../components/showJobs";
+import ShowJobs from "../components/ShowJobs";
 
 function Dashboard() {
   const [scraping, setScraping] = useState(false);

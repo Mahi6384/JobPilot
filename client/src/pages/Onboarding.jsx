@@ -9,6 +9,7 @@ function Onboarding() {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     name: "",
+    email: "",
     phone: "",
     currentCity: "",
     remotePreference: false,
@@ -88,6 +89,18 @@ function Onboarding() {
                   onChange={handleChange}
                   required
                   placeholder="John Doe"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
+                />
+              </div>
+              <div>
+                <label className="block mb-2 text-sm text-gray-400">Email Address</label>
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  required
+                  placeholder="john@example.com"
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
                 />
               </div>

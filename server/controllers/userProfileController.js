@@ -47,10 +47,14 @@ const createOrUpdateProfile = async (req, res) => {
       try {
         const {
           name,
+          phone,
+          currentCity,
+          remotePreference,
           experience,
           skills,
           preferredRoles,
-          preferredLocations,
+          jobType,
+          workMode,
           expectedCTC,
         } = req.body;
 
@@ -58,8 +62,7 @@ const createOrUpdateProfile = async (req, res) => {
           !name ||
           !experience ||
           !skills ||
-          !preferredRoles ||
-          !preferredLocations
+          !preferredRoles
         ) {
           return res
             .status(400)
@@ -79,12 +82,6 @@ const createOrUpdateProfile = async (req, res) => {
               .split(",")
               .map((r) => r.trim())
               .filter((r) => r);
-        const locationsArray = Array.isArray(preferredLocations)
-          ? preferredLocations
-          : preferredLocations
-              .split(",")
-              .map((l) => l.trim())
-              .filter((l) => l);
 
         const resumePath = req.file ? req.file.path : "";
 
@@ -94,10 +91,14 @@ const createOrUpdateProfile = async (req, res) => {
         if (profile) {
           // Update existing profile
           profile.name = name;
+          profile.phone = phone || "";
+          profile.currentCity = currentCity || "";
+          profile.remotePreference = remotePreference === "true" || remotePreference === true;
           profile.experience = experience;
           profile.skills = skillsArray;
           profile.preferredRoles = rolesArray;
-          profile.preferredLocations = locationsArray;
+          profile.jobType = jobType || "";
+          profile.workMode = workMode || "";
           profile.expectedCTC = expectedCTC || "";
           if (resumePath) {
             // Delete old resume if exists
@@ -112,10 +113,14 @@ const createOrUpdateProfile = async (req, res) => {
           profile = new UserProfile({
             userId: req.userId,
             name,
+            phone: phone || "",
+            currentCity: currentCity || "",
+            remotePreference: remotePreference === "true" || remotePreference === true,
             experience,
             skills: skillsArray,
             preferredRoles: rolesArray,
-            preferredLocations: locationsArray,
+            jobType: jobType || "",
+            workMode: workMode || "",
             expectedCTC: expectedCTC || "",
             resumePath,
           });
@@ -135,10 +140,14 @@ const createOrUpdateProfile = async (req, res) => {
           message: "Profile saved successfully",
           profile: {
             name: profile.name,
+            phone: profile.phone,
+            currentCity: profile.currentCity,
+            remotePreference: profile.remotePreference,
             experience: profile.experience,
             skills: profile.skills,
             preferredRoles: profile.preferredRoles,
-            preferredLocations: profile.preferredLocations,
+            jobType: profile.jobType,
+            workMode: profile.workMode,
             expectedCTC: profile.expectedCTC,
             resumePath: profile.resumePath,
           },

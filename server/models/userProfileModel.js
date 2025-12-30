@@ -13,6 +13,18 @@ const userProfileSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    phone: {
+      type: String,
+      trim: true,
+    },
+    currentCity: {
+      type: String,
+      trim: true,
+    },
+    remotePreference: {
+      type: Boolean,
+      default: false,
+    },
     experience: {
       type: String,
       required: true,
@@ -27,10 +39,15 @@ const userProfileSchema = new mongoose.Schema(
       required: true,
       default: [],
     },
-    preferredLocations: {
-      type: [String],
-      required: true,
-      default: [],
+    jobType: {
+      type: String,
+      enum: ["Full-time", "Internship", ""],
+      default: "",
+    },
+    workMode: {
+      type: String,
+      enum: ["Remote", "Hybrid", "Onsite", ""],
+      default: "",
     },
     expectedCTC: {
       type: String,

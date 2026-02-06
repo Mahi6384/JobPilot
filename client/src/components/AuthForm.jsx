@@ -35,14 +35,8 @@ function AuthForm({ heading, btnText, newUser, TextUnderHeading, passwordDes }) 
       // Dispatch event to notify Navbar
       window.dispatchEvent(new Event("authChange"));
 
-      // Redirect based on onboarding status
-      if (response.data.user.onboardingStatus === "initial") {
-        navigate("/onboarding");
-      } else if (response.data.user.onboardingStatus === "profile_completed") {
-        navigate("/connect-naukri");
-      } else {
-        navigate("/dashboard");
-      }
+      // Redirect to onboarding after successful auth
+      navigate("/onboarding");
     } catch (error) {
       console.error("Auth error:", error);
       alert(error.response?.data?.message || "Authentication failed");
@@ -65,14 +59,8 @@ function AuthForm({ heading, btnText, newUser, TextUnderHeading, passwordDes }) 
       // Dispatch event to notify Navbar
       window.dispatchEvent(new Event("authChange"));
 
-      // Redirect based on onboarding status
-      if (response.data.user.onboardingStatus === "initial") {
-        navigate("/onboarding");
-      } else if (response.data.user.onboardingStatus === "profile_completed") {
-        navigate("/connect-naukri");
-      } else {
-        navigate("/dashboard");
-      }
+      // Redirect to onboarding after successful auth
+      navigate("/onboarding");
     } catch (error) {
       console.error("Google Auth error:", error);
       alert(error.response?.data?.message || "Google Authentication failed");

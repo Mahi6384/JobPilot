@@ -47,20 +47,6 @@ const Navbar = () => {
 
         <div className="flex items-center gap-8">
           <ul className="hidden md:flex items-center gap-6 text-sm font-medium opacity-80">
-            {isLoggedIn && (
-              <>
-                <li>
-                  <Link to="/dashboard" className="hover:text-blue-400 transition-colors">
-                    Dashboard
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/profile" className="hover:text-blue-400 transition-colors">
-                    Profile
-                  </Link>
-                </li>
-              </>
-            )}
             <li>
               <Link to="/" className="hover:text-blue-400 transition-colors">
                 Support

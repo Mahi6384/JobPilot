@@ -1,10 +1,6 @@
 const express = require("express");
 const mongoose = require("mongoose");
-const jobRoutes = require("./routes/jobRoutes");
 const authRoutes = require("./routes/authRoutes");
-const userProfileRoutes = require("./routes/userProfileRoutes");
-const naukriRoutes = require("./routes/naukriRoutes");
-const linkedinRoutes = require("./routes/linkedinRoutes");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const { validateEnv } = require("./utils/envValidator");
@@ -33,10 +29,6 @@ app.get("/hi", (req, res) => res.send("Hello from Mahi server!"));
 
 // Routes
 app.use("/api/auth", authRoutes);
-app.use("/api/profile", userProfileRoutes);
-app.use("/api/naukri", naukriRoutes);
-app.use("/api/linkedin", linkedinRoutes);
-app.use("/api/jobs", jobRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);
@@ -74,9 +66,5 @@ app.listen(PORT, () => {
   logger.info(`Server is running at: http://localhost:${PORT}`);
   connectDB();
 
-  // Start daily scraper cron job
-  if (process.env.NODE_ENV !== "test") {
-    require("./jobs/dailyScraper");
-    logger.info("Daily scraper cron job started");
-  }
+
 });

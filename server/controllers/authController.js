@@ -1,7 +1,10 @@
 const User = require("../models/userModel");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { OAuth2Client } = require("google-auth-library");
 const logger = require("../utils/logger");
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const generateToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_SECRET || "your-secret-key", {
@@ -98,13 +101,26 @@ const login = async (req, res) => {
   }
 };
 
-// Google Auth (simplified - you'll need to integrate with Google OAuth)
+// Google Auth (securely verify ID token)
 const googleAuth = async (req, res) => {
   try {
-    const { email, googleId, name } = req.body;
+    const { credential } = req.body;
 
-    if (!email || !googleId) {
-      return res.status(400).json({ message: "Email and Google ID are required" });
+    if (!credential) {
+      return res.status(400).json({ message: "Google credential is required" });
+    }
+
+    // Verify Google ID token
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name, picture } = payload;
+
+    if (!email) {
+      return res.status(400).json({ message: "Google account must have an email" });
     }
 
     // Find or create user
@@ -117,15 +133,21 @@ const googleAuth = async (req, res) => {
         onboardingStatus: "initial",
       });
       await user.save();
-    } else if (!user.googleId) {
-      // Link Google account to existing user
-      user.googleId = googleId;
-      await user.save();
+      logger.info(`New user created via Google Auth: ${email}`);
+    } else {
+      let isUpdated = false;
+      if (!user.googleId) {
+        user.googleId = googleId;
+        isUpdated = true;
+      }
+      if (isUpdated) {
+        await user.save();
+        logger.info(`Linked Google account to existing user: ${email}`);
+      }
     }
 
     const token = generateToken(user._id);
 
-    logger.info(`Google auth successful: ${email}`);
     res.status(200).json({
       message: "Google authentication successful",
       token,

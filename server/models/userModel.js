@@ -23,6 +23,31 @@ const userSchema = new mongoose.Schema(
       enum: ["initial", "profile_completed", "naukri_connected", "completed"],
       default: "initial",
     },
+
+    // Step 1: Basic Info
+    fullName: { type: String },
+    phone: { type: String },
+    location: { type: String },
+
+    // Step 2: Current Position
+    currentJobTitle: { type: String },
+    currentCompany: { type: String },
+    currentLPA: { type: Number },
+    yearsOfExperience: { type: Number },
+
+    // Step 3: Job Preferences
+    targetJobTitle: { type: String },
+    expectedLPA: { type: Number },
+    preferredLocations: [{ type: String }],
+    jobType: {
+      type: String,
+      enum: ["full-time", "remote", "hybrid", "contract"],
+    },
+
+    // Step 4: Skills & Resume (optional fields)
+    skills: [{ type: String }],
+    resumeUrl: { type: String },
+    linkedinUrl: { type: String },
   },
   {
     timestamps: true,

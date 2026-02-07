@@ -5,6 +5,7 @@ const {
   getOnboardingStatus,
   saveStep,
   getProfile,
+  updateProfile,
 } = require("../controllers/onboardingController");
 
 // All routes require authentication
@@ -18,5 +19,8 @@ router.put("/step/:stepNumber", saveStep);
 
 // Get full user profile
 router.get("/profile", getProfile);
+
+// Update full profile
+router.put("/profile", updateProfile);
 
 module.exports = router;

@@ -184,8 +184,87 @@ const getProfile = async (req, res) => {
   }
 };
 
+// Update full profile (for profile edit page)
+const updateProfile = async (req, res) => {
+  try {
+    const profileData = req.body;
+    let validationErrors = [];
+
+    // Validate Step 1: Basic Info
+    if (!profileData.fullName?.trim()) validationErrors.push("Full name is required");
+    if (!profileData.phone?.trim()) validationErrors.push("Phone is required");
+    if (!profileData.location?.trim()) validationErrors.push("Location is required");
+
+    // Validate Step 2: Current Position
+    if (!profileData.currentJobTitle?.trim()) validationErrors.push("Current job title is required");
+    if (!profileData.currentCompany?.trim()) validationErrors.push("Current company is required");
+    if (profileData.currentLPA === undefined || profileData.currentLPA === null) {
+      validationErrors.push("Current LPA is required");
+    }
+    if (profileData.yearsOfExperience === undefined || profileData.yearsOfExperience === null) {
+      validationErrors.push("Years of experience is required");
+    }
+
+    // Validate Step 3: Job Preferences
+    if (!profileData.targetJobTitle?.trim()) validationErrors.push("Target job title is required");
+    if (profileData.expectedLPA === undefined || profileData.expectedLPA === null) {
+      validationErrors.push("Expected LPA is required");
+    }
+    if (!profileData.preferredLocations || profileData.preferredLocations.length === 0) {
+      validationErrors.push("At least one preferred location is required");
+    }
+    if (!profileData.jobType) validationErrors.push("Job type is required");
+
+    // Validate Step 4: Skills
+    if (!profileData.skills || profileData.skills.length === 0) {
+      validationErrors.push("At least one skill is required");
+    }
+
+    if (validationErrors.length > 0) {
+      return res.status(400).json({ 
+        message: "Validation failed", 
+        errors: validationErrors 
+      });
+    }
+
+    const updateFields = {
+      fullName: profileData.fullName,
+      phone: profileData.phone,
+      location: profileData.location,
+      currentJobTitle: profileData.currentJobTitle,
+      currentCompany: profileData.currentCompany,
+      currentLPA: profileData.currentLPA,
+      yearsOfExperience: profileData.yearsOfExperience,
+      targetJobTitle: profileData.targetJobTitle,
+      expectedLPA: profileData.expectedLPA,
+      preferredLocations: profileData.preferredLocations,
+      jobType: profileData.jobType,
+      skills: profileData.skills,
+      resumeUrl: profileData.resumeUrl || undefined,
+      linkedinUrl: profileData.linkedinUrl || undefined,
+    };
+
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      { $set: updateFields },
+      { new: true }
+    ).select("-passwordHash");
+
+    logger.info(`User ${req.userId} updated their profile`);
+
+    res.status(200).json({
+      message: "Profile updated successfully",
+      profile: user,
+    });
+  } catch (error) {
+    logger.error("Update profile error", error);
+    res.status(500).json({ message: "Failed to update profile" });
+  }
+};
+
 module.exports = {
   getOnboardingStatus,
   saveStep,
   getProfile,
+  updateProfile,
 };

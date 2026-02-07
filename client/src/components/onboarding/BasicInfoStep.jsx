@@ -7,10 +7,10 @@ function BasicInfoStep({ formData, setFormData, errors }) {
 
   return (
     <div className="space-y-6">
-      <div className="text-center mb-8">
+      {/* <div className="text-center mb-8">
         <h2 className="text-2xl font-bold text-white mb-2">Tell us about yourself</h2>
         <p className="text-gray-400">Let's start with your basic information</p>
-      </div>
+      </div> */}
 
       <div className="space-y-4">
         {/* Full Name */}

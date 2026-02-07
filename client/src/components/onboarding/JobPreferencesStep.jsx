@@ -5,9 +5,10 @@ function JobPreferencesStep({ formData, setFormData, errors }) {
 
   const jobTypes = [
     { value: "full-time", label: "Full-time" },
+    {value :"Internship", label:"Internship"},
     { value: "remote", label: "Remote" },
     { value: "hybrid", label: "Hybrid" },
-    { value: "contract", label: "Contract" },
+
   ];
 
   const handleChange = (e) => {

@@ -1,6 +1,7 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const authRoutes = require("./routes/authRoutes");
+const onboardingRoutes = require("./routes/onboardingRoutes");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const { validateEnv } = require("./utils/envValidator");
@@ -29,6 +30,7 @@ app.get("/hi", (req, res) => res.send("Hello from Mahi server!"));
 
 // Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/onboarding", onboardingRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);

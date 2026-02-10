@@ -7,10 +7,9 @@ const cors = require("cors");
 const { validateEnv } = require("./utils/envValidator");
 const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
 const logger = require("./utils/logger");
-
+const jobRoutes = require("./routes/jobRoutes");
 dotenv.config();
 
-// Validate environment variables
 try {
   validateEnv();
 } catch (error) {
@@ -31,6 +30,7 @@ app.get("/hi", (req, res) => res.send("Hello from Mahi server!"));
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/onboarding", onboardingRoutes);
+app.use("/api/jobs", jobRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);

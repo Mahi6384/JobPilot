@@ -227,11 +227,9 @@ function Profile() {
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={!hasChanges() || loading}
+                //   disabled={!hasChanges() || loading}
                   className={`px-8 py-3 rounded-lg font-medium transition-colors ${
-                    !hasChanges() || loading
-                      ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                      : "bg-blue-600 text-white hover:bg-blue-700"
+                            "bg-blue-600 text-white hover:bg-blue-700"
                   }`}
                 >
                   {loading ? "Saving..." : "Save Changes"}

@@ -57,8 +57,28 @@ const getJobsById = async (req, res) =>{
     }
 }
 
+const getDashboardData = async (req, res) => {
+    try {
+        const topJobs = await getMatchedJobs(req.userId, {}, 1, 5);
+        const totalMatches = await Job.countDocuments();
+        
+        return res.status(200).json({
+            stats: {
+                totalMatches,
+                appliedToday: 0,  // Placeholder for future
+                successRate: 0,   // Placeholder for future
+            },
+            topJobs: topJobs.jobs,
+        });
+    } catch (error) {
+        logger.error("Error in getDashboardData", error);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+};
+
 module.exports = {
     getMatchedJobsHandles,
     getJobFilters,
-    getJobsById
+    getJobsById,
+    getDashboardData
 }

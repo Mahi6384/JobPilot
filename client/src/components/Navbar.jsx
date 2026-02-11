@@ -49,7 +49,12 @@ const Navbar = () => {
           <ul className="hidden md:flex items-center gap-6 text-sm font-medium opacity-80">
             <li>
               <Link to="/" className="hover:text-blue-400 transition-colors">
-                Support
+                Dashboard
+              </Link>
+            </li>
+            <li>
+              <Link to="/jobs" className="hover:text-blue-400 transition-colors">
+                Jobs
               </Link>
             </li>
           </ul>

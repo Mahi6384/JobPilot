@@ -1,37 +1,45 @@
 const mongoose = require("mongoose");
 
-const applicationSchema = new mongoose.Schema({
-    userId:{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User", 
-        required: true,
+const applicationSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
     },
-    jobId:{
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Job", 
-        required: true,
-        index: true,
+    jobId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Job",
+      required: true,
+      index: true,
     },
-   appliedAt: {
+    status: {
+      type: String,
+      enum: ["queued", "in_progress", "applied", "failed", "review_needed"],
+      default: "queued",
+      required: true,
+    },
+    appliedAt: {
       type: Date,
-      default: null, 
+      default: null,
     },
     coverLetter: {
       type: String,
       default: null,
     },
-    
+
     errorMessage: {
       type: String,
       default: null,
     },
-    
+
     platform: {
       type: String,
       required: true,
-      enum: ['LinkedIn', 'Indeed', 'Naukri', 'AngelList', 'Other'],
+      enum: ["LinkedIn", "Indeed", "Naukri", "AngelList", "Other"],
     },
-    
+
     resumeUrlUsed: {
       type: String,
       default: null,
@@ -44,6 +52,7 @@ const applicationSchema = new mongoose.Schema({
   },
   {
     timestamps: true,
-})
+  },
+);
 applicationSchema.index({ userId: 1, jobId: 1 }, { unique: true });
-module.exports = mongoose.model("Application", applicationSchema)
+module.exports = mongoose.model("Application", applicationSchema);

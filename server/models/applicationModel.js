@@ -1,0 +1,49 @@
+const mongoose = require("mongoose");
+
+const applicationSchema = new mongoose.Schema({
+    userId:{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User", 
+        required: true,
+    },
+    jobId:{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Job", 
+        required: true,
+        index: true,
+    },
+   appliedAt: {
+      type: Date,
+      default: null, 
+    },
+    coverLetter: {
+      type: String,
+      default: null,
+    },
+    
+    errorMessage: {
+      type: String,
+      default: null,
+    },
+    
+    platform: {
+      type: String,
+      required: true,
+      enum: ['LinkedIn', 'Indeed', 'Naukri', 'AngelList', 'Other'],
+    },
+    
+    resumeUrlUsed: {
+      type: String,
+      default: null,
+    },
+    attempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+  },
+  {
+    timestamps: true,
+})
+
+module.exports = mongoose.model("Application", applicationSchema)

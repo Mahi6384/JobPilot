@@ -19,13 +19,11 @@ function Profile() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Get auth token
   const getAuthHeader = () => {
     const token = localStorage.getItem("token");
     return { Authorization: `Bearer ${token}` };
   };
 
-  // Fetch profile data on mount
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -48,50 +46,62 @@ function Profile() {
     fetchProfile();
   }, [navigate]);
 
-  // Check if data has changed
   const hasChanges = () => {
     return JSON.stringify(formData) !== JSON.stringify(originalData);
   };
 
-  // Validate all sections
   const validateAll = () => {
     const newErrors = {};
 
-    // Step 1
-    if (!formData.fullName?.trim()) newErrors.fullName = "Full name is required";
+    if (!formData.fullName?.trim())
+      newErrors.fullName = "Full name is required";
     if (!formData.phone?.trim()) newErrors.phone = "Phone number is required";
     if (!formData.location?.trim()) newErrors.location = "Location is required";
 
-    // Step 2
-    if (!formData.currentJobTitle?.trim()) newErrors.currentJobTitle = "Job title is required";
-    if (!formData.currentCompany?.trim()) newErrors.currentCompany = "Company is required";
-    if (formData.currentLPA === undefined || formData.currentLPA === "") 
+    if (!formData.currentJobTitle?.trim())
+      newErrors.currentJobTitle = "Job title is required";
+    if (!formData.currentCompany?.trim())
+      newErrors.currentCompany = "Company is required";
+    if (formData.currentLPA === undefined || formData.currentLPA === "")
       newErrors.currentLPA = "Current LPA is required";
-    if (formData.yearsOfExperience === undefined || formData.yearsOfExperience === "") 
+    if (
+      formData.yearsOfExperience === undefined ||
+      formData.yearsOfExperience === ""
+    )
       newErrors.yearsOfExperience = "Experience is required";
 
-    // Step 3
-    if (!formData.targetJobTitle?.trim()) newErrors.targetJobTitle = "Target job is required";
-    if (formData.expectedLPA === undefined || formData.expectedLPA === "") 
+    if (!formData.targetJobTitle?.trim())
+      newErrors.targetJobTitle = "Target job is required";
+    if (formData.expectedLPA === undefined || formData.expectedLPA === "")
       newErrors.expectedLPA = "Expected LPA is required";
-    if (!formData.preferredLocations?.length) 
+    if (!formData.preferredLocations?.length)
       newErrors.preferredLocations = "Add at least one location";
     if (!formData.jobType) newErrors.jobType = "Select a job type";
 
-    // Step 4
     if (!formData.skills?.length) newErrors.skills = "Add at least one skill";
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  // Save profile
   const handleSave = async () => {
     if (!validateAll()) {
-      // Find first section with error and navigate there
-      if (errors.fullName || errors.phone || errors.location) setActiveSection(1);
-      else if (errors.currentJobTitle || errors.currentCompany || errors.currentLPA || errors.yearsOfExperience) setActiveSection(2);
-      else if (errors.targetJobTitle || errors.expectedLPA || errors.preferredLocations || errors.jobType) setActiveSection(3);
+      if (errors.fullName || errors.phone || errors.location)
+        setActiveSection(1);
+      else if (
+        errors.currentJobTitle ||
+        errors.currentCompany ||
+        errors.currentLPA ||
+        errors.yearsOfExperience
+      )
+        setActiveSection(2);
+      else if (
+        errors.targetJobTitle ||
+        errors.expectedLPA ||
+        errors.preferredLocations ||
+        errors.jobType
+      )
+        setActiveSection(3);
       else if (errors.skills) setActiveSection(4);
       return;
     }
@@ -102,33 +112,35 @@ function Profile() {
       const response = await axios.put(
         `${API_BASE}/api/onboarding/profile`,
         formData,
-        { headers: getAuthHeader() }
+        { headers: getAuthHeader() },
       );
 
       setOriginalData(response.data.profile);
       setSaveSuccess(true);
-      
-      // Update localStorage with new profile data
+
       const user = JSON.parse(localStorage.getItem("user") || "{}");
-      localStorage.setItem("user", JSON.stringify({
-        ...user,
-        fullName: response.data.profile.fullName,
-      }));
-      
-      // Notify navbar to update
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          ...user,
+          fullName: response.data.profile.fullName,
+        }),
+      );
+
       window.dispatchEvent(new Event("authChange"));
 
-      // Navigate to home after save
       navigate("/");
     } catch (error) {
       console.error("Failed to save profile:", error);
-      alert(error.response?.data?.message || "Failed to save profile. Please try again.");
+      alert(
+        error.response?.data?.message ||
+          "Failed to save profile. Please try again.",
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  // Discard changes
   const handleDiscard = () => {
     setFormData(originalData);
     setErrors({});
@@ -141,17 +153,40 @@ function Profile() {
     { number: 4, title: "Skills & Resume", icon: "⚡" },
   ];
 
-  // Render active section
   const renderSection = () => {
     switch (activeSection) {
       case 1:
-        return <BasicInfoStep formData={formData} setFormData={setFormData} errors={errors} />;
+        return (
+          <BasicInfoStep
+            formData={formData}
+            setFormData={setFormData}
+            errors={errors}
+          />
+        );
       case 2:
-        return <CurrentPositionStep formData={formData} setFormData={setFormData} errors={errors} />;
+        return (
+          <CurrentPositionStep
+            formData={formData}
+            setFormData={setFormData}
+            errors={errors}
+          />
+        );
       case 3:
-        return <JobPreferencesStep formData={formData} setFormData={setFormData} errors={errors} />;
+        return (
+          <JobPreferencesStep
+            formData={formData}
+            setFormData={setFormData}
+            errors={errors}
+          />
+        );
       case 4:
-        return <SkillsResumeStep formData={formData} setFormData={setFormData} errors={errors} />;
+        return (
+          <SkillsResumeStep
+            formData={formData}
+            setFormData={setFormData}
+            errors={errors}
+          />
+        );
       default:
         return null;
     }
@@ -227,10 +262,8 @@ function Profile() {
                 <button
                   type="button"
                   onClick={handleSave}
-                //   disabled={!hasChanges() || loading}
-                  className={`px-8 py-3 rounded-lg font-medium transition-colors ${
-                            "bg-blue-600 text-white hover:bg-blue-700"
-                  }`}
+                  //   disabled={!hasChanges() || loading}
+                  className={`px-8 py-3 rounded-lg font-medium transition-colors ${"bg-blue-600 text-white hover:bg-blue-700"}`}
                 >
                   {loading ? "Saving..." : "Save Changes"}
                 </button>

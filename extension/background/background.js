@@ -26,7 +26,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Return true to indicate we'll respond asynchronously
   return true;
 });
+chrome.runtime.onMessageExternal.addListener(
+  (message, sender, sendResponse) => {
+    logger.info("External message received:", message.action);
 
+    if (message.action === "startApplying") {
+      startApplicationProcess();
+      sendResponse({ status: "started" });
+    }
+
+    return true;
+  },
+);
 // Main application process
 async function startApplicationProcess() {
   if (isApplying) {
@@ -91,7 +102,7 @@ async function startApplicationProcess() {
   }
 }
 
-// Process a single job - open tab, wait, close
+// Process a single job - open tab, inject content script, apply
 async function processJob(application, jobUrl) {
   // 1. Update status to in_progress
   await updateApplicationStatus(application._id, "in_progress");
@@ -108,20 +119,40 @@ async function processJob(application, jobUrl) {
   await waitForTabLoad(tab.id);
   logger.info(`Tab ${tab.id} loaded`);
 
-  // 4. Wait 3 seconds (placeholder for content script interaction)
-  // In Step 6, we'll inject content scripts here instead of just waiting
+  // 4. Wait a bit extra for Naukri's dynamic content to render
   await delay(3000);
 
-  // 5. For now, mark as "review_needed" since we're not auto-filling yet
-  await updateApplicationStatus(application._id, "review_needed");
-  logger.info(`Marked as review_needed: ${application.jobId?.title}`);
+  // 5. Inject the Naukri content script
+  logger.info(`Injecting content script into tab ${tab.id}...`);
+  await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    files: ["content-scripts/naukri.js"],
+  });
 
-  // 6. Close the tab
+  // 6. Tell the content script to apply
+  logger.info(`Sending applyToJob message to tab ${tab.id}...`);
+  const results = await chrome.tabs.sendMessage(tab.id, {
+    action: "applyToJob",
+  });
+
+  logger.info(`Result from content script:`, JSON.stringify(results));
+
+  // 7. Update status based on result
+  if (results && results.success) {
+    await updateApplicationStatus(application._id, "applied");
+    logger.info(`✅ Applied: ${application.jobId?.title} - ${results.message}`);
+  } else {
+    const errorMsg = results?.error || "Unknown error";
+    await updateApplicationStatus(application._id, "review_needed", errorMsg);
+    logger.warn(`⚠️ Needs review: ${application.jobId?.title} - ${errorMsg}`);
+  }
+
+  // 8. Close the tab
   await chrome.tabs.remove(tab.id);
   logger.info(`Closed tab ${tab.id}`);
 
-  // 7. Small delay between jobs to not overwhelm the browser
-  await delay(1000);
+  // 9. Delay between jobs to not overwhelm the browser
+  await delay(2000);
 }
 
 // Wait for a tab to finish loading

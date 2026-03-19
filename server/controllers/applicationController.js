@@ -125,7 +125,7 @@ exports.getApplicationStats = async (req, res) => {
   try {
     const userId = req.user._id;
     const stats = await Application.aggregate([
-      { $match: { userId: mongoose.Types.ObjectId(userId) } },
+      { $match: { userId: new mongoose.Types.ObjectId(userId) } },
       {
         $group: {
           _id: "$status",

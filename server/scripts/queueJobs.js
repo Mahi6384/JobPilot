@@ -17,7 +17,14 @@ async function queueJobs() {
     console.log(`Using user: ${user.email}`);
 
     // Get 5 naukri jobs
-    const jobs = await Job.find({ platform: "naukri" }).limit(5);
+    const appliedJobs = await Application.distinct("jobId", {
+      userId: user._id,
+    });
+
+    const jobs = await Job.find({
+      platform: "naukri",
+      _id: { $nin: appliedJobs },
+    }).limit(5);
     console.log(`Found ${jobs.length} jobs to queue`);
 
     // Create applications with status "queued"
@@ -26,10 +33,10 @@ async function queueJobs() {
         userId: user._id,
         jobId: job._id,
       });
-      if (existing) {
-        console.log(`Already queued: ${job.title}`);
-        continue;
-      }
+      // if (existing) {
+      //   console.log(`Already queued: ${job.title}`);
+      //   continue;
+      // }
 
       await Application.create({
         userId: user._id,

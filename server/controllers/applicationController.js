@@ -16,36 +16,49 @@ exports.createBatchApplications = async (req, res) => {
     }
 
     const jobs = await Job.find({ _id: { $in: jobIds } });
-    if (jobs.length !== jobIds.length) {
+    if (jobs.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "One or more jobs not found",
+        message: "No matching jobs found",
       });
     }
 
-    const applications = jobIds.map((jobId) => ({
+    const existingApps = await Application.find({
+      userId,
+      jobId: { $in: jobIds },
+    }).select("jobId");
+
+    const existingJobIds = new Set(
+      existingApps.map((app) => app.jobId.toString()),
+    );
+
+    const newJobIds = jobIds.filter((id) => !existingJobIds.has(id.toString()));
+
+    if (newJobIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "All selected jobs are already in your queue",
+        data: { queued: 0, alreadyExists: jobIds.length },
+      });
+    }
+
+    const applications = newJobIds.map((jobId) => ({
       userId,
       jobId,
       status: "queued",
       platform:
         jobs.find((j) => j._id.toString() === jobId.toString())?.platform ||
-        "Other",
+        "other",
       attempts: 0,
     }));
 
-    const result = await Application.insertMany(applications, {
-      ordered: false,
-    }).catch((error) => {
-      if (error.code === 11000) {
-        return { insertedCount: 0 };
-      }
-      throw error;
-    });
+    const result = await Application.insertMany(applications);
 
+    const skipped = jobIds.length - newJobIds.length;
     res.status(201).json({
       success: true,
-      message: `${applications.length} applications queued successfully`,
-      data: result,
+      message: `${result.length} jobs queued${skipped > 0 ? ` (${skipped} already in queue)` : ""}`,
+      data: { queued: result.length, alreadyExists: skipped },
     });
   } catch (error) {
     console.error("Error creating batch applications:", error);

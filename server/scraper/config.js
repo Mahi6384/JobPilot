@@ -12,7 +12,7 @@ module.exports = {
   maxJobsPerQuery: 20,
   maxTotalJobs: 100,
 
-  headless: true,
+  headless: false,
   delayBetweenPages: 3000,
 
   jobMaxAgeDays: 30,

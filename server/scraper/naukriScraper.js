@@ -9,6 +9,12 @@ function buildSearchUrl(query, page = 1) {
 }
 
 async function collectJobLinks(page) {
+  try {
+    await page.waitForSelector("a.title", { timeout: 10000 });
+  } catch (err) {
+    console.log("   ⏳ Timeout waiting for job cards... page might be slow or empty");
+  }
+
   for (let i = 0; i < 3; i++) {
     await page.evaluate(() => window.scrollBy(0, window.innerHeight));
     await page.waitForTimeout(1000);

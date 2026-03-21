@@ -1,4 +1,5 @@
 const Job = require("../models/jobModel");
+const User = require("../models/userModel");
 const getMatchedJobs = require("../services/matchingService").getMatchedJobs;
 const logger = require("../utils/logger");
 
@@ -76,9 +77,23 @@ const getDashboardData = async (req, res) => {
     }
 };
 
+const getJobSearchStatus = async (req, res) => {
+    try {
+        const user = await User.findById(req.userId).select("jobSearchStatus");
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
+        return res.status(200).json({ jobSearchStatus: user.jobSearchStatus });
+    } catch (error) {
+        logger.error("Error in getJobSearchStatus", error);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+};
+
 module.exports = {
     getMatchedJobsHandles,
     getJobFilters,
     getJobsById,
-    getDashboardData
+    getDashboardData,
+    getJobSearchStatus
 }

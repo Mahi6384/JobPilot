@@ -5,6 +5,7 @@ const { scrapeQuery } = require("./naukriScraper");
 const { transformJobs } = require("./transformer");
 const { filterNewJobs, cleanupOldJobs } = require("./deduplicator");
 const Job = require("../models/jobModel");
+const ScrapeQuery = require("../models/scrapeQueryModel");
 require("dotenv").config();
 require("../models/applicationModel");
 
@@ -19,19 +20,31 @@ async function runScraper() {
     console.log("🧹 Cleaning up old jobs...");
     await cleanupOldJobs();
 
+    // Merge static config queries with dynamic user-driven queries
+    const dynamicQueries = await ScrapeQuery.find().distinct("query");
+    const staticQueries = config.searchQueries.map((q) => q.toLowerCase().trim());
+    const allQueries = [...new Set([...staticQueries, ...dynamicQueries])];
+    console.log(`\n📋 Queries: ${staticQueries.length} static + ${dynamicQueries.length} dynamic = ${allQueries.length} total\n`);
+
     browser = await chromium.launch({ headless: config.headless });
     console.log(`\n🌐 Browser launched (headless: ${config.headless})\n`);
 
     let totalNewJobs = 0;
     const summary = [];
 
-    for (const query of config.searchQueries) {
+    for (const query of allQueries) {
       console.log(`\n${"=".repeat(60)}`);
       console.log(`🔎 Searching: "${query}"`);
       console.log(`${"=".repeat(60)}`);
 
       const rawJobs = await scrapeQuery(browser, query);
       console.log(`\n   📦 Scraped ${rawJobs.length} direct-apply jobs`);
+
+      // Update lastScrapedAt for dynamic queries
+      await ScrapeQuery.findOneAndUpdate(
+        { query: query.toLowerCase().trim() },
+        { lastScrapedAt: new Date() }
+      );
 
       if (rawJobs.length === 0) {
         summary.push({ query, scraped: 0, new: 0, saved: 0 });

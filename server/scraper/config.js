@@ -1,15 +1,8 @@
 module.exports = {
-  searchQueries: [
-    "software engineer",
-    "frontend developer",
-    "backend developer",
-    "full stack developer",
-    "react developer",
-    "node js developer",
-  ],
+  searchQueries: ["Devops Engineer", "Data Scientist", "Data Analyst"],
 
-  maxPagesPerQuery: 2,
-  maxJobsPerQuery: 20,
+  maxPagesPerQuery: 3,
+  maxJobsPerQuery: 10,
   maxTotalJobs: 100,
 
   headless: false,

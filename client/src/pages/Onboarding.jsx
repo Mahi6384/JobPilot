@@ -16,6 +16,7 @@ function Onboarding() {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [findingJobs, setFindingJobs] = useState(false);
 
   // Get auth token
   const getAuthHeader = () => {
@@ -47,7 +48,10 @@ function Onboarding() {
         // Determine which step to start on
         if (profile.fullName && profile.phone && profile.location) {
           if (profile.currentJobTitle && profile.currentCompany) {
-            if (profile.targetJobTitle && profile.preferredLocations?.length > 0) {
+            if (
+              profile.targetJobTitle &&
+              profile.preferredLocations?.length > 0
+            ) {
               setCurrentStep(4);
             } else {
               setCurrentStep(3);
@@ -76,28 +80,38 @@ function Onboarding() {
 
     switch (currentStep) {
       case 1:
-        if (!formData.fullName?.trim()) newErrors.fullName = "Full name is required";
-        if (!formData.phone?.trim()) newErrors.phone = "Phone number is required";
-        if (!formData.location?.trim()) newErrors.location = "Location is required";
+        if (!formData.fullName?.trim())
+          newErrors.fullName = "Full name is required";
+        if (!formData.phone?.trim())
+          newErrors.phone = "Phone number is required";
+        if (!formData.location?.trim())
+          newErrors.location = "Location is required";
         break;
       case 2:
-        if (!formData.currentJobTitle?.trim()) newErrors.currentJobTitle = "Job title is required";
-        if (!formData.currentCompany?.trim()) newErrors.currentCompany = "Company is required";
-        if (formData.currentLPA === undefined || formData.currentLPA === "") 
+        if (!formData.currentJobTitle?.trim())
+          newErrors.currentJobTitle = "Job title is required";
+        if (!formData.currentCompany?.trim())
+          newErrors.currentCompany = "Company is required";
+        if (formData.currentLPA === undefined || formData.currentLPA === "")
           newErrors.currentLPA = "Current LPA is required";
-        if (formData.yearsOfExperience === undefined || formData.yearsOfExperience === "") 
+        if (
+          formData.yearsOfExperience === undefined ||
+          formData.yearsOfExperience === ""
+        )
           newErrors.yearsOfExperience = "Experience is required";
         break;
       case 3:
-        if (!formData.targetJobTitle?.trim()) newErrors.targetJobTitle = "Target job is required";
-        if (formData.expectedLPA === undefined || formData.expectedLPA === "") 
+        if (!formData.targetJobTitle?.trim())
+          newErrors.targetJobTitle = "Target job is required";
+        if (formData.expectedLPA === undefined || formData.expectedLPA === "")
           newErrors.expectedLPA = "Expected LPA is required";
-        if (!formData.preferredLocations?.length) 
+        if (!formData.preferredLocations?.length)
           newErrors.preferredLocations = "Add at least one location";
         if (!formData.jobType) newErrors.jobType = "Select a job type";
         break;
       case 4:
-        if (!formData.skills?.length) newErrors.skills = "Add at least one skill";
+        if (!formData.skills?.length)
+          newErrors.skills = "Add at least one skill";
         break;
     }
 
@@ -147,20 +161,25 @@ function Onboarding() {
       const response = await axios.put(
         `${API_BASE}/api/onboarding/step/${currentStep}`,
         stepData,
-        { headers: getAuthHeader() }
+        { headers: getAuthHeader() },
       );
 
       // Update localStorage with new user data
       const user = JSON.parse(localStorage.getItem("user") || "{}");
-      localStorage.setItem("user", JSON.stringify({
-        ...user,
-        onboardingStatus: response.data.user.onboardingStatus,
-      }));
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          ...user,
+          onboardingStatus: response.data.user.onboardingStatus,
+        }),
+      );
 
       return true;
     } catch (error) {
       console.error("Failed to save step:", error);
-      alert(error.response?.data?.message || "Failed to save. Please try again.");
+      alert(
+        error.response?.data?.message || "Failed to save. Please try again.",
+      );
       return false;
     } finally {
       setLoading(false);
@@ -178,11 +197,42 @@ function Onboarding() {
       setCurrentStep(currentStep + 1);
       setErrors({});
     } else {
-      // Onboarding complete
+      // Onboarding complete — show "finding jobs" screen
+      setFindingJobs(true);
       window.dispatchEvent(new Event("authChange"));
-      navigate("/");
     }
   };
+
+  // Poll for job search completion when finding jobs
+  useEffect(() => {
+    if (!findingJobs) return;
+
+    const startTime = Date.now();
+    const maxWaitMs = 90000; // 90 second safety timeout
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await axios.get(`${API_BASE}/api/jobs/search-status`, {
+          headers: getAuthHeader(),
+        });
+
+        if (response.data.jobSearchStatus === "ready") {
+          clearInterval(pollInterval);
+          navigate("/");
+        }
+      } catch (error) {
+        console.error("Failed to poll search status:", error);
+      }
+
+      // Safety timeout — navigate anyway after 90 seconds
+      if (Date.now() - startTime > maxWaitMs) {
+        clearInterval(pollInterval);
+        navigate("/");
+      }
+    }, 3000);
+
+    return () => clearInterval(pollInterval);
+  }, [findingJobs, navigate]);
 
   // Handle back button
   const handleBack = () => {
@@ -196,17 +246,105 @@ function Onboarding() {
   const renderStep = () => {
     switch (currentStep) {
       case 1:
-        return <BasicInfoStep formData={formData} setFormData={setFormData} errors={errors} />;
+        return (
+          <BasicInfoStep
+            formData={formData}
+            setFormData={setFormData}
+            errors={errors}
+          />
+        );
       case 2:
-        return <CurrentPositionStep formData={formData} setFormData={setFormData} errors={errors} />;
+        return (
+          <CurrentPositionStep
+            formData={formData}
+            setFormData={setFormData}
+            errors={errors}
+          />
+        );
       case 3:
-        return <JobPreferencesStep formData={formData} setFormData={setFormData} errors={errors} />;
+        return (
+          <JobPreferencesStep
+            formData={formData}
+            setFormData={setFormData}
+            errors={errors}
+          />
+        );
       case 4:
-        return <SkillsResumeStep formData={formData} setFormData={setFormData} errors={errors} />;
+        return (
+          <SkillsResumeStep
+            formData={formData}
+            setFormData={setFormData}
+            errors={errors}
+          />
+        );
       default:
         return null;
     }
   };
+
+  // Show "finding jobs" screen
+  if (findingJobs) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
+        <div className="text-center max-w-md">
+          {/* Animated search icon */}
+          {/* <div className="mb-8">
+            <div className="w-24 h-24 mx-auto rounded-full bg-blue-600/20 flex items-center justify-center animate-pulse">
+              <svg
+                className="w-12 h-12 text-blue-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
+          </div> */}
+
+          <h1 className="text-3xl font-bold text-white mb-3">
+            Finding Perfect Jobs For You
+          </h1>
+          <p className="text-gray-400 mb-8 text-lg">
+            We're searching for{" "}
+            <span className="text-blue-400 font-medium">
+              {formData.targetJobTitle}
+            </span>{" "}
+            roles that match your profile. This usually takes about a minute.
+          </p>
+
+          {/* Progress dots */}
+          <div className="flex justify-center gap-2 mb-8">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="w-3 h-3 rounded-full bg-blue-500"
+                style={{
+                  animation: `pulse 1.4s ease-in-out ${i * 0.2}s infinite`,
+                  opacity: 0.4,
+                }}
+              />
+            ))}
+          </div>
+
+          <p className="text-gray-500 text-sm">
+            You'll be redirected automatically when ready
+          </p>
+        </div>
+
+        <style>{`
+          @keyframes pulse {
+            0%, 80%, 100% { opacity: 0.4; transform: scale(1); }
+            40% { opacity: 1; transform: scale(1.3); }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   if (initialLoading) {
     return (
@@ -221,10 +359,10 @@ function Onboarding() {
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Complete Your Profile</h1>
-          <p className="text-gray-400">
-            Step {currentStep} of 4
-          </p>
+          <h1 className="text-3xl font-bold text-white mb-2">
+            Complete Your Profile
+          </h1>
+          <p className="text-gray-400">Step {currentStep} of 4</p>
         </div>
 
         {/* Step Indicator */}

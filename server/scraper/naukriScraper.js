@@ -30,7 +30,7 @@ async function collectJobLinks(page) {
     return urls;
   });
 
-  return links.slice(0, config.maxJobsPerQuery);
+  return links.slice(0, 50); // Fetch plenty of links to survive the skips
 }
 
 async function scrapeJobPage(page, jobUrl) {
@@ -117,40 +117,58 @@ async function scrapeQuery(browser, query) {
 
   try {
     for (let pageNum = 1; pageNum <= config.maxPagesPerQuery; pageNum++) {
-      const searchUrl = buildSearchUrl(query, pageNum);
-      console.log(`\n   🔍 Page ${pageNum}: ${searchUrl.substring(0, 80)}...`);
+      try {
+        const searchUrl = buildSearchUrl(query, pageNum);
+        console.log(`\n   🔍 Page ${pageNum}: ${searchUrl.substring(0, 80)}...`);
 
-      await page.goto(searchUrl, {
-        waitUntil: "domcontentloaded",
-        timeout: 30000,
-      });
-      await page.waitForTimeout(config.delayBetweenPages);
+        await page.goto(searchUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: 30000,
+        });
+        await page.waitForTimeout(config.delayBetweenPages);
 
-      const jobLinks = await collectJobLinks(page);
-      console.log(`   📦 Found ${jobLinks.length} job links`);
+        const jobLinks = await collectJobLinks(page);
+        console.log(`   📦 Found ${jobLinks.length} job links`);
 
-      if (jobLinks.length === 0) {
-        console.log("   ⚠️  No results, moving to next query");
-        break;
-      }
-
-      for (let i = 0; i < jobLinks.length; i++) {
-        const jobInfo = await scrapeJobPage(page, jobLinks[i]);
-
-        if (jobInfo) {
-          console.log(
-            `   ✅ [${i + 1}/${jobLinks.length}] ${jobInfo.title} at ${jobInfo.company}`,
-          );
-          allJobs.push({ ...jobInfo, applicationUrl: jobLinks[i] });
-        } else {
-          console.log(`   ❌ [${i + 1}/${jobLinks.length}] Skipped`);
+        if (jobLinks.length === 0) {
+          console.log("   ⚠️  No results, moving to next query");
+          break;
         }
 
-        await page.waitForTimeout(1500);
+        for (let i = 0; i < jobLinks.length; i++) {
+          const jobInfo = await scrapeJobPage(page, jobLinks[i]);
+
+          if (jobInfo) {
+            console.log(
+              `   ✅ [${i + 1}/${jobLinks.length}] ${jobInfo.title} at ${jobInfo.company}`,
+            );
+            allJobs.push({ ...jobInfo, applicationUrl: jobLinks[i] });
+          } else {
+            console.log(`   ❌ [${i + 1}/${jobLinks.length}] Skipped`);
+          }
+
+          await page.waitForTimeout(1500);
+
+          if (allJobs.length >= config.maxJobsPerQuery) {
+            console.log(`   🎯 Reached the target of ${config.maxJobsPerQuery} jobs. Stopping query.`);
+            break;
+          }
+        }
+
+        if (allJobs.length >= config.maxJobsPerQuery) {
+          break; // Break the outer page loop if we hit our target
+        }
+      } catch (err) {
+        if (err.message.includes("Target page, context or browser has been closed")) {
+          console.log(`   ❌ Stopped early: Target page, context or browser has been closed`);
+          break; // Break the outer page loop gracefully
+        } else {
+          throw err;
+        }
       }
     }
   } finally {
-    await context.close();
+    await context.close().catch(() => {});
   }
 
   return allJobs;

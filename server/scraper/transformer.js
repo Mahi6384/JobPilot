@@ -2,13 +2,10 @@ function parseExperience(expString) {
   if (!expString || expString === "Not specified") {
     return { min: 0, max: 2 };
   }
-
   const numbers = expString.match(/(\d+)/g);
   if (!numbers) return { min: 0, max: 2 };
-
   const min = parseInt(numbers[0]);
   const max = numbers[1] ? parseInt(numbers[1]) : min + 2;
-
   return { min, max };
 }
 
@@ -19,17 +16,16 @@ function parseSalary(salaryString) {
 
   const numbers = salaryString.match(/(\d+\.?\d*)/g);
   if (!numbers) return { min: 0, max: 0 };
-
   const min = parseFloat(numbers[0]);
   const max = numbers[1] ? parseFloat(numbers[1]) : min;
-
   return { min, max };
 }
 
 function detectJobType(location, title) {
   const text = `${location} ${title}`.toLowerCase();
 
-  if (text.includes("remote") || text.includes("work from home")) return "remote";
+  if (text.includes("remote") || text.includes("work from home"))
+    return "remote";
   if (text.includes("hybrid")) return "hybrid";
   return "hybrid";
 }

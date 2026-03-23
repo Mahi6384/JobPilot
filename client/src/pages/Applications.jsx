@@ -49,8 +49,8 @@ function Applications() {
   return (
     <div className="min-h-screen bg-gray-950 p-8">
       <div className="max-w-5xl mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-2">Applications</h1>
-        <p className="text-gray-400 mb-8">Track all your job applications</p>
+        <h1 className="text-3xl font-bold text-white mb-2">Your Application Journey</h1>
+        <p className="text-gray-400 mb-8">Monitor and manage your job application progress in one place</p>
 
         {/* Stats Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -113,9 +113,9 @@ function Applications() {
           </div>
         ) : applications.length === 0 ? (
           <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-12 text-center">
-            <p className="text-gray-400 text-lg">No applications found</p>
+            <p className="text-gray-400 text-lg">You haven't applied to any jobs yet</p>
             <p className="text-gray-500 text-sm mt-2">
-              Go to the Jobs page to start applying!
+              Head over to the Jobs section and start applying to find your dream role!
             </p>
           </div>
         ) : (

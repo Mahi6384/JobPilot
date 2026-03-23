@@ -5,7 +5,6 @@ import api from "../utils/api";
 import StatsCard from "../components/dashboard/StatsCard";
 import JobCard from "../components/dashboard/JobCard";
 import ExtensionStatus from "../components/dashboard/ExtensionStatus";
-
 function Home() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -58,10 +57,12 @@ function Home() {
       <div className="max-w-7xl mx-auto">
         {/* Welcome Section */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">
-            Welcome back, {user?.fullName || "User"}! 👋
-          </h1>
-          <p className="text-gray-400">Here's your job search overview</p>
+          <h3 className="text-3xl font-bold text-white mb-2">
+            Welcome {user?.fullName ? user.fullName.split(" ")[0] : "User"}!
+          </h3>
+          <p className="text-gray-400">
+            Here is a quick overview of your job search progress
+          </p>
         </div>
 
         {/* Stats Row */}
@@ -118,16 +119,18 @@ function Home() {
                   </svg> */}
                 </div>
                 {/* <p className="text-white font-medium mb-1">
-                  Finding jobs matching your profile...
+                  Our AI is analyzing your profile to find perfect matches...
                 </p> */}
                 <p className="text-gray-500 text-sm">
-                  This usually takes about a minute. Refresh the page soon!
+                  Our AI is analyzing your profile to find perfect job matches.
+                  This usually takes about a minute, hang tight!
                 </p>
               </div>
             ) : (
               <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-12 text-center">
                 <p className="text-gray-400">
-                  No matched jobs yet. Check back soon!
+                  We are currently looking for the best jobs matching your
+                  profile. Please check back later!
                 </p>
               </div>
             )}
@@ -140,7 +143,7 @@ function Home() {
             onClick={() => navigate("/jobs")}
             className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
           >
-            Browse All Jobs
+            Explore Recommended Jobs
           </button>
           <button
             onClick={() => navigate("/profile")}

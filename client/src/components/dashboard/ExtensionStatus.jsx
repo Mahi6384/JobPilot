@@ -28,7 +28,7 @@ function ExtensionStatus() {
         <Plug
           className={`w-5 h-5 ${isConnected ? "text-green-400" : "text-red-400"}`}
         />
-        <span className="text-white font-medium"> Download Extension </span>
+        <span className="text-white font-medium"> Get the JobPilot Extension </span>
       </div>
       <div className="flex items-center gap-2 mb-3">
         {/* <div
@@ -47,7 +47,7 @@ function ExtensionStatus() {
             className={`w-full mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors flex justify-center items-center gap-2 font-medium`}
           >
             <Download className="w-4 h-4" />
-            {hasDownloaded ? "Download Again" : "Download Extension ZIP"}
+            {hasDownloaded ? "Download Again" : "Download JobPilot Extension"}
           </button>
 
           <InstallGuideModal

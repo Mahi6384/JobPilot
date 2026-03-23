@@ -111,7 +111,7 @@ function Jobs() {
   return (
     <div className="min-h-screen bg-gray-950 p-8">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-8">Browse Jobs</h1>
+        <h1 className="text-3xl font-bold text-white mb-8">Find Your Next Opportunity</h1>
 
         <div className="flex gap-8">
           {/* Filters Sidebar */}
@@ -127,7 +127,7 @@ function Jobs() {
           {/* Job List */}
           <div className="flex-1">
             <div className="mb-4 text-gray-400 text-sm">
-              {pagination.total} jobs found
+              We found {pagination.total} open positions matching your profile
             </div>
 
             <JobList

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import api from "../utils/api";
-import JobFilters from "../components/jobs/JobFilters";
-import JobList from "../components/jobs/JobList";
-import JobDetail from "../components/jobs/JobDetail";
-import ApplyBar from "../components/jobs/ApplyBar";
+import JobFilters from "../components/Jobs/JobFilters";
+import JobList from "../components/Jobs/JobList";
+import JobDetail from "../components/Jobs/JobDetail";
+import ApplyBar from "../components/Jobs/ApplyBar";
 
 function Jobs() {
   const [jobs, setJobs] = useState([]);
@@ -111,7 +111,9 @@ function Jobs() {
   return (
     <div className="min-h-screen bg-gray-950 p-8">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-8">Find Your Next Opportunity</h1>
+        <h1 className="text-3xl font-bold text-white mb-8">
+          Find Your Next Opportunity
+        </h1>
 
         <div className="flex gap-8">
           {/* Filters Sidebar */}

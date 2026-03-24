@@ -48,21 +48,31 @@ const Navbar = () => {
         <div className="flex items-center gap-8">
           <ul className="hidden md:flex items-center gap-6 text-sm font-medium opacity-80">
             <li>
-              <Link to="/" className="hover:text-blue-400 transition-colors">
-                Dashboard
-              </Link>
-            </li>
-            <li>
-              <Link to="/jobs" className="hover:text-blue-400 transition-colors">
-                Jobs
-              </Link>
-            </li>
-            <li>
-              <Link to="/applications" className="hover:text-blue-400 transition-colors">
-                Applications
+              <Link to="/guide" className="hover:text-blue-400 transition-colors">
+                Guide
               </Link>
             </li>
           </ul>
+
+          {isLoggedIn && (
+            <ul className="hidden md:flex items-center gap-6 text-sm font-medium opacity-80">
+              <li>
+                <Link to="/" className="hover:text-blue-400 transition-colors">
+                  Dashboard
+                </Link>
+              </li>
+              <li>
+                <Link to="/jobs" className="hover:text-blue-400 transition-colors">
+                  Jobs
+                </Link>
+              </li>
+              <li>
+                <Link to="/applications" className="hover:text-blue-400 transition-colors">
+                  Applications
+                </Link>
+              </li>
+            </ul>
+          )}
 
           <div className="flex items-center gap-4 pl-6 border-l border-white/10">
             {isLoggedIn ? (

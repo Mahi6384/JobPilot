@@ -7,7 +7,7 @@ import CurrentPositionStep from "../components/onboarding/CurrentPositionStep";
 import JobPreferencesStep from "../components/onboarding/JobPreferencesStep";
 import SkillsResumeStep from "../components/onboarding/SkillsResumeStep";
 
-const API_BASE = "http://localhost:5000";
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.MODE === 'development' ? "http://localhost:5000" : "https://jobpilot-production-3ba1.up.railway.app");
 
 function Onboarding() {
   const navigate = useNavigate();

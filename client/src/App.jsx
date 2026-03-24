@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import SignUp from "./pages/SignUp";
@@ -8,16 +8,21 @@ import Jobs from "./pages/Jobs";
 import Applications from "./pages/Applications";
 import Navbar from "./components/Navbar";
 import ProtectedRoute from "./components/ProtectedRoute";
+import Guide from "./pages/Guide";
 
-function App() {
+function AppContent() {
+  const location = useLocation();
+  const isAuthPage = location.pathname === "/login" || location.pathname === "/signup";
+
   return (
-    <Router>
-      <Navbar />
-      <div className="pt-20">
+    <>
+      {!isAuthPage && <Navbar />}
+      <div className={!isAuthPage ? "pt-20" : ""}>
         <Routes>
           {/* Public routes */}
           <Route path="/signup" element={<SignUp />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/guide" element={<Guide />} />
           
           {/* Onboarding - requires auth but not completed onboarding */}
           <Route
@@ -64,6 +69,14 @@ function App() {
           />
         </Routes>
       </div>
+    </>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AppContent />
     </Router>
   );
 }

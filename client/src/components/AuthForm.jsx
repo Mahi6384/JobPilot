@@ -85,20 +85,20 @@ function AuthForm({
   };
 
   return (
-    <div className="font-montserrat">
-      <div className="min-h-screen w-full h-screen flex items-center justify-center bg-gray-950">
-        <div className="w-[80%] max-w-6xl text-white flex h-5/6 rounded-3xl bg-stone-800/20 shadow-blue-900 shadow-[0_4px_40px_0px_rgba(0,0,0,0.1)]">
-          <section className="flex flex-col flex-1 min-w-[350px] p-12 justify-center">
-            <h1 className="text-3xl font-bold leading-tight mt-2 select-none">
+    <div className="font-montserrat min-h-screen w-full bg-gray-950 flex flex-col justify-center">
+      <div className="h-[calc(100vh-5rem)] w-full flex items-center justify-center overflow-hidden">
+        <div className="w-[85%] max-w-5xl text-white flex h-[85%] max-h-[650px] rounded-3xl bg-stone-800/20 shadow-blue-900 shadow-[0_4px_40px_0px_rgba(0,0,0,0.1)]">
+          <section className="flex flex-col flex-1 min-w-[320px] p-8 md:p-10 justify-center">
+            {/* <h1 className="text-3xl font-bold leading-tight mt-2 select-none">
               {heading}
             </h1>
             <p className="text-sm font-light opacity-85 mb-8 select-none">
               {TextUnderHeading}
-            </p>
+            </p> */}
 
             <form className="w-full" onSubmit={handleSubmit}>
               {newUser && (
-                <div className="flex flex-col mb-6">
+                <div className="flex flex-col mb-4">
                   <label
                     htmlFor="name"
                     className="text-sm font-normal mb-1 select-none"
@@ -112,11 +112,11 @@ function AuthForm({
                     value={formData.name}
                     onChange={handleChange}
                     placeholder="Mahi Jain"
-                    className="rounded-md px-4 py-2 text-black placeholder-gray-500 shadow-inner focus:shadow-[inset_0_0_10px_#131a25]"
+                    className="rounded-md px-4 py-1.5 text-black placeholder-gray-500 shadow-inner focus:shadow-[inset_0_0_10px_#131a25]"
                   />
                 </div>
               )}
-              <div className="flex flex-col mb-6">
+              <div className="flex flex-col mb-4">
                 <label
                   htmlFor="email"
                   className="text-sm font-normal mb-1 select-none"
@@ -129,12 +129,12 @@ function AuthForm({
                   type="email"
                   value={formData.email}
                   onChange={handleChange}
-                  placeholder="abc@gmail.com"
+                  placeholder="ypuram@gmail.com"
                   required
-                  className="rounded-md px-4 py-2 text-black placeholder-gray-500 shadow-inner focus:shadow-[inset_0_0_10px_#131a25]"
+                  className="rounded-md px-4 py-1.5 text-black placeholder-gray-500 shadow-inner focus:shadow-[inset_0_0_10px_#131a25]"
                 />
               </div>
-              <div className="flex flex-col mb-6">
+              <div className="flex flex-col mb-4">
                 <label
                   htmlFor="passwd"
                   className="text-sm font-normal mb-1 select-none"
@@ -149,7 +149,7 @@ function AuthForm({
                   onChange={handleChange}
                   placeholder="Password"
                   required
-                  className="rounded-md px-4 py-2 text-black placeholder-gray-500 shadow-inner focus:shadow-[inset_0_0_10px_#131a25]"
+                  className="rounded-md px-4 py-1.5 text-black placeholder-gray-500 shadow-inner focus:shadow-[inset_0_0_10px_#131a25]"
                 />
                 {!newUser && (
                   <a
@@ -164,13 +164,13 @@ function AuthForm({
               <button
                 type="submit"
                 disabled={loading}
-                className="bg-blue-900 py-3 rounded-md font-medium text-lg shadow-md w-full transition-colors duration-300 disabled:bg-gray-600"
+                className="bg-blue-900 py-2.5 rounded-md font-medium text-base shadow-md w-full transition-colors duration-300 disabled:bg-gray-600 mt-2"
               >
                 {loading ? "Processing..." : btnText}
               </button>
             </form>
 
-            <div className="flex justify-center gap-7 my-8">
+            <div className="flex justify-center gap-7 my-5">
               <GoogleLogin
                 onSuccess={handleGoogleAuthSuccess}
                 onError={handleGoogleAuthError}
@@ -180,29 +180,45 @@ function AuthForm({
               />
             </div>
 
-            {newUser && (
+            {newUser ? (
               <a
                 href="/login"
                 className="text-center text-xs underline opacity-60 hover:opacity-90 select-none"
               >
                 Already an user? Login
               </a>
+            ) : (
+              <a
+                href="/signup"
+                className="text-center text-xs underline opacity-60 hover:opacity-90 select-none"
+              >
+                New user? Create an account
+              </a>
             )}
           </section>
-          <section className="flex flex-col justify-center flex-1 min-w-[400px] bg-#131a25/10 p-12 text-white rounded-tr-xl rounded-br-xl relative">
+          <section className="flex flex-col justify-center flex-1 min-w-[350px] bg-[#131a25]/10 p-8 md:p-10 text-white rounded-tr-xl rounded-br-xl relative">
+            <a
+              href="/guide"
+              className="absolute top-8 right-8 text-sm underline opacity-60 hover:opacity-100 transition-opacity select-none"
+            >
+              how to use JobPilot?
+            </a>
             <div>
-              <h2 className="text-4xl font-bold mb-6 select-none">
-                Sit back,
+              <h2 className="text-3xl font-bold mb-6 select-none leading-tight">
+                Sit back and
                 <br />
-                Apply smart
+                Apply smart with{" "}
+                <span className="bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
+                  JobPilot
+                </span>
               </h2>
               <blockquote>
                 <p className="text-sm font-light opacity-85 leading-relaxed mb-4 select-none">
-                  "Tired of spending hours filling out job applications? Let
+                  Tired of spending hours filling out job applications? Let
                   JobPilot do the heavy lifting. Our AI agent applies to
                   top-matching jobs every day — no more repeating the same
                   details or missing deadlines. You focus on interviews, we'll
-                  handle the hunt. Sit back. Apply smart. Land faster."
+                  handle the hunt. Sit back. Apply smart. Land faster.
                 </p>
               </blockquote>
             </div>

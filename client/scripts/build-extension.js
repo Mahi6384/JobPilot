@@ -7,7 +7,7 @@ const outputFile = path.resolve(process.cwd(), 'public/JobPilot-Extension.zip');
 
 try {
   console.log("Zipping extension from:", extensionFolder);
-  zip.addLocalFolder(extensionFolder);
+  zip.addLocalFolder(extensionFolder, 'JobPilot-Extension');
   zip.writeZip(outputFile);
   console.log("\n✅ Extension successfully zipped to public/JobPilot-Extension.zip");
 } catch (error) {

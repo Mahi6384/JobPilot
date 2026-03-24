@@ -5,12 +5,12 @@ import api from "../utils/api";
 import StatsCard from "../components/dashboard/StatsCard";
 import JobCard from "../components/dashboard/JobCard";
 import ExtensionStatus from "../components/dashboard/ExtensionStatus";
-
 function Home() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState(null);
   const [user, setUser] = useState(null);
+  const [jobSearchStatus, setJobSearchStatus] = useState("idle");
 
   useEffect(() => {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
@@ -20,8 +20,12 @@ function Home() {
 
   const fetchDashboardData = async () => {
     try {
-      const response = await api.get("/api/jobs/dashboard");
-      setDashboardData(response.data);
+      const [dashResponse, statusResponse] = await Promise.all([
+        api.get("/api/jobs/dashboard"),
+        api.get("/api/jobs/search-status"),
+      ]);
+      setDashboardData(dashResponse.data);
+      setJobSearchStatus(statusResponse.data.jobSearchStatus);
     } catch (error) {
       console.error("Failed to fetch dashboard data:", error);
     } finally {
@@ -37,7 +41,10 @@ function Home() {
           <div className="h-4 w-96 bg-gray-800 rounded animate-pulse mb-8"></div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-32 bg-gray-800 rounded-2xl animate-pulse"></div>
+              <div
+                key={i}
+                className="h-32 bg-gray-800 rounded-2xl animate-pulse"
+              ></div>
             ))}
           </div>
         </div>
@@ -50,10 +57,12 @@ function Home() {
       <div className="max-w-7xl mx-auto">
         {/* Welcome Section */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">
-            Welcome back, {user?.fullName || "User"}! 👋
-          </h1>
-          <p className="text-gray-400">Here's your job search overview</p>
+          <h3 className="text-3xl font-bold text-white mb-2">
+            Welcome {user?.fullName ? user.fullName.split(" ")[0] : "User"}!
+          </h3>
+          <p className="text-gray-400">
+            Here is a quick overview of your job search progress
+          </p>
         </div>
 
         {/* Stats Row */}
@@ -96,11 +105,33 @@ function Home() {
           <div className="space-y-4">
             {dashboardData?.topJobs?.length > 0 ? (
               dashboardData.topJobs.map((job) => (
-                <JobCard key={job._id} job={job} onClick={() => navigate("/jobs")} />
+                <JobCard
+                  key={job._id}
+                  job={job}
+                  onClick={() => navigate("/jobs")}
+                />
               ))
+            ) : jobSearchStatus === "searching" ? (
+              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-12 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-600/20 flex items-center justify-center animate-pulse">
+                  {/* <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg> */}
+                </div>
+                {/* <p className="text-white font-medium mb-1">
+                  Our AI is analyzing your profile to find perfect matches...
+                </p> */}
+                <p className="text-gray-500 text-sm">
+                  Our AI is analyzing your profile to find perfect job matches.
+                  This usually takes about a minute, hang tight!
+                </p>
+              </div>
             ) : (
               <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-12 text-center">
-                <p className="text-gray-400">No matched jobs yet. Check back soon!</p>
+                <p className="text-gray-400">
+                  We are currently looking for the best jobs matching your
+                  profile. Please check back later!
+                </p>
               </div>
             )}
           </div>
@@ -112,7 +143,7 @@ function Home() {
             onClick={() => navigate("/jobs")}
             className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
           >
-            Browse All Jobs
+            Explore Recommended Jobs
           </button>
           <button
             onClick={() => navigate("/profile")}

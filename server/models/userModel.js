@@ -23,6 +23,11 @@ const userSchema = new mongoose.Schema(
       enum: ["initial", "profile_completed", "naukri_connected", "completed"],
       default: "initial",
     },
+    jobSearchStatus: {
+      type: String,
+      enum: ["idle", "searching", "ready"],
+      default: "idle",
+    },
 
     // Step 1: Basic Info
     fullName: { type: String },

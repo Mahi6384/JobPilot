@@ -37,7 +37,7 @@ const applicationSchema = new mongoose.Schema(
     platform: {
       type: String,
       required: true,
-      enum: ["LinkedIn", "Indeed", "Naukri", "AngelList", "Other"],
+      enum: ["linkedin", "indeed", "naukri", "angellist", "other"],
     },
 
     resumeUrlUsed: {

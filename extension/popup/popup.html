@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      body {
+        width: 320px;
+        padding: 20px;
+        font-family: Arial, sans-serif;
+      }
+      h1 {
+        font-size: 18px;
+        margin-bottom: 10px;
+      }
+      input {
+        width: 100%;
+        padding: 8px;
+        margin: 8px 0;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        box-sizing: border-box;
+      }
+      button {
+        width: 100%;
+        padding: 10px;
+        background: #4a90d9;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        margin-top: 8px;
+      }
+      button:hover {
+        background: #357abd;
+      }
+      .error {
+        color: red;
+        font-size: 12px;
+      }
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Login View -->
+    <div id="loginView">
+      <h1>🚀 JobPilot</h1>
+      <input type="email" id="emailInput" placeholder="Email" />
+      <input type="password" id="passwordInput" placeholder="Password" />
+      <button id="loginBtn">Login</button>
+      <p id="errorMsg" class="error hidden"></p>
+    </div>
+
+    <!-- Connected View -->
+    <div id="connectedView" class="hidden">
+      <h1>🚀 JobPilot</h1>
+      <p>Connected as: <strong id="userName"></strong></p>
+      <p id="queueCount"></p>
+      <button id="startBtn">Start Applying</button>
+      <button id="logoutBtn" style="background: #e74c3c">Disconnect</button>
+    </div>
+
+    <script src="../utils/storage.js"></script>
+    <script src="../utils/api.js"></script>
+    <script src="../utils/logger.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

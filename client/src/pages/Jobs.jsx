@@ -11,7 +11,11 @@ function Jobs() {
   const [filterOptions, setFilterOptions] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [detailJob, setDetailJob] = useState(null);
-  const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    totalPages: 1,
+    total: 0,
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -66,9 +70,37 @@ function Jobs() {
     setSelectedIds(newSelection);
   };
 
-  const handleApply = () => {
-    alert(`Applying to ${selectedIds.size} jobs! (Feature coming in Phase 5)`);
-    setSelectedIds(new Set());
+  const handleApply = async () => {
+    try {
+      const jobIds = [...selectedIds];
+      const response = await api.post("/api/applications/batch", { jobIds });
+      setSelectedIds(new Set());
+      const EXTENSION_ID = "emjjjomjhdlnbdlggkdchagheghfeenk";
+      if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+        chrome.runtime.sendMessage(
+          EXTENSION_ID,
+          { action: "startApplying" },
+          (response) => {
+            if (response?.status === "started") {
+              alert(
+                `✅ ${jobIds.length} jobs queued and auto-applying started!`,
+              );
+            } else {
+              alert(
+                `✅ ${jobIds.length} jobs queued! Open the extension to start applying.`,
+              );
+            }
+          },
+        );
+      } else {
+        alert(
+          `✅ ${jobIds.length} jobs queued! Open the extension to start applying.`,
+        );
+      }
+    } catch (error) {
+      const message = error.response?.data?.message || "Failed to queue jobs";
+      alert(`❌ ${message}`);
+    }
   };
 
   const handleClearFilters = () => {
@@ -79,7 +111,7 @@ function Jobs() {
   return (
     <div className="min-h-screen bg-gray-950 p-8">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-8">Browse Jobs</h1>
+        <h1 className="text-3xl font-bold text-white mb-8">Find Your Next Opportunity</h1>
 
         <div className="flex gap-8">
           {/* Filters Sidebar */}
@@ -95,7 +127,7 @@ function Jobs() {
           {/* Job List */}
           <div className="flex-1">
             <div className="mb-4 text-gray-400 text-sm">
-              {pagination.total} jobs found
+              We found {pagination.total} open positions matching your profile
             </div>
 
             <JobList
@@ -111,7 +143,9 @@ function Jobs() {
               <div className="flex justify-center gap-2 mt-8">
                 <button
                   disabled={pagination.page === 1}
-                  onClick={() => setPagination({ ...pagination, page: pagination.page - 1 })}
+                  onClick={() =>
+                    setPagination({ ...pagination, page: pagination.page - 1 })
+                  }
                   className="px-4 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors"
                 >
                   Previous
@@ -121,7 +155,9 @@ function Jobs() {
                 </span>
                 <button
                   disabled={pagination.page === pagination.totalPages}
-                  onClick={() => setPagination({ ...pagination, page: pagination.page + 1 })}
+                  onClick={() =>
+                    setPagination({ ...pagination, page: pagination.page + 1 })
+                  }
                   className="px-4 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors"
                 >
                   Next
@@ -133,7 +169,9 @@ function Jobs() {
       </div>
 
       {/* Job Detail Modal */}
-      {detailJob && <JobDetail job={detailJob} onClose={() => setDetailJob(null)} />}
+      {detailJob && (
+        <JobDetail job={detailJob} onClose={() => setDetailJob(null)} />
+      )}
 
       {/* Apply Bar */}
       <ApplyBar
@@ -144,5 +182,4 @@ function Jobs() {
     </div>
   );
 }
-
 export default Jobs;

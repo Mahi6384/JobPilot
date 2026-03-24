@@ -57,6 +57,11 @@ const Navbar = () => {
                 Jobs
               </Link>
             </li>
+            <li>
+              <Link to="/applications" className="hover:text-blue-400 transition-colors">
+                Applications
+              </Link>
+            </li>
           </ul>
 
           <div className="flex items-center gap-4 pl-6 border-l border-white/10">

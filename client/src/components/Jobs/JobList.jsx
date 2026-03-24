@@ -17,8 +17,8 @@ function JobList({ jobs, selectedIds, onToggleSelect, onViewDetail, loading }) {
   if (jobs.length === 0) {
     return (
       <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-12 text-center">
-        <p className="text-gray-400 text-lg">No jobs found matching your criteria.</p>
-        <p className="text-gray-500 text-sm mt-2">Try adjusting your filters</p>
+        <p className="text-gray-400 text-lg">We couldn't find any jobs matching your current criteria.</p>
+        <p className="text-gray-500 text-sm mt-2">Try adjusting your filters to discover more open positions</p>
       </div>
     );
   }

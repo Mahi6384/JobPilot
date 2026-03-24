@@ -6,9 +6,9 @@ const {
   getApplicationStats,
   updateApplicationStatus,
 } = require("../controllers/applicationController");
-const { protect } = require("../middleware/authMiddleware");
+const { authenticate } = require("../middleware/authMiddleware");
 
-router.use(protect);
+router.use(authenticate);
 
 // Specific routes MUST come before generic routes
 router.post("/batch", createBatchApplications);

@@ -1,4 +1,7 @@
 const User = require("../models/userModel");
+const Job = require("../models/jobModel");
+const ScrapeQuery = require("../models/scrapeQueryModel");
+const { runOnDemandScrape } = require("../services/onDemandScraper");
 const logger = require("../utils/logger");
 
 // Get onboarding status and current step data
@@ -154,12 +157,47 @@ const saveStep = async (req, res) => {
 
     logger.info(`User ${req.userId} completed onboarding step ${step}`);
 
+    // After final step: trigger on-demand scraping if needed
+    if (step === 4 && user.targetJobTitle) {
+      // ALWAYS save query for future scheduled scrapes
+      await ScrapeQuery.findOneAndUpdate(
+        { query: user.targetJobTitle.toLowerCase().trim() },
+        {
+          query: user.targetJobTitle.toLowerCase().trim(),
+          addedBy: user._id,
+          source: "onboarding",
+          lastScrapedAt: new Date(0), // Set to epoch so the daily scraper prioritizes it immediately
+        },
+        { upsert: true, new: true }
+      );
+
+      // Escape regex chars to prevent crashes with titles like "C++ Developer"
+      const escapedTitle = user.targetJobTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      const matchingJobCount = await Job.countDocuments({
+        title: { $regex: escapedTitle, $options: "i" },
+      });
+
+      if (matchingJobCount < 50) {
+        logger.info(`Few matching jobs (${matchingJobCount} < 50) for "${user.targetJobTitle}", triggering on-demand scrape`);
+        // Fire-and-forget: don't await, let it run in background
+        runOnDemandScrape(user._id, user.targetJobTitle).catch((err) =>
+          logger.error("On-demand scrape background error", err)
+        );
+      } else {
+        // Enough jobs exist, mark as ready immediately
+        logger.info(`Sufficient jobs (${matchingJobCount} >= 20) already exist for "${user.targetJobTitle}", skipping mini-scraper.`);
+        await User.findByIdAndUpdate(user._id, { jobSearchStatus: "ready" });
+      }
+    }
+
     res.status(200).json({
       message: `Step ${step} saved successfully`,
       user: {
         id: user._id,
         email: user.email,
         onboardingStatus: user.onboardingStatus,
+        jobSearchStatus: user.jobSearchStatus,
       },
     });
   } catch (error) {

@@ -14,7 +14,7 @@ const generateToken = (userId) => {
 
 const signup = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, name } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required" });
@@ -29,6 +29,7 @@ const signup = async (req, res) => {
     // Create user
     const user = new User({
       email,
+      fullName: name,
       passwordHash: password, // Will be hashed by pre-save hook
       onboardingStatus: "initial",
     });
@@ -44,6 +45,7 @@ const signup = async (req, res) => {
       user: {
         id: user._id,
         email: user.email,
+        fullName: user.fullName,
         onboardingStatus: user.onboardingStatus,
       },
     });
@@ -89,6 +91,7 @@ const login = async (req, res) => {
       user: {
         id: user._id,
         email: user.email,
+        fullName: user.fullName,
         onboardingStatus: user.onboardingStatus,
       },
     });
@@ -130,6 +133,7 @@ const googleAuth = async (req, res) => {
       user = new User({
         email,
         googleId,
+        fullName: name,
         onboardingStatus: "initial",
       });
       await user.save();
@@ -154,6 +158,7 @@ const googleAuth = async (req, res) => {
       user: {
         id: user._id,
         email: user.email,
+        fullName: user.fullName,
         onboardingStatus: user.onboardingStatus,
       },
     });

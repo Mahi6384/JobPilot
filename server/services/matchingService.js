@@ -1,57 +1,51 @@
 const Job = require("../models/jobModel");
 const User = require("../models/userModel");
+const Application = require("../models/applicationModel");
 function calculateMatchScore(user, job) {
   let score = 0;
 
-  // --- 1. Skills overlap (0-40 points) ---
   if (user.skills && user.skills.length > 0 && job.skills && job.skills.length > 0) {
     const userSkills = user.skills.map((s) => s.toLowerCase().trim());
     const jobSkills = job.skills.map((s) => s.toLowerCase().trim());
     const overlap = jobSkills.filter((s) => userSkills.includes(s)).length;
-    const ratio = overlap / jobSkills.length; // what % of job skills does user have
+    const ratio = overlap / jobSkills.length;
     score += Math.round(ratio * 40);
   }
 
-  // --- 2. Location match (0-20 points) ---
   if (user.preferredLocations && user.preferredLocations.length > 0 && job.location) {
     const preferred = user.preferredLocations.map((l) => l.toLowerCase().trim());
     const jobLoc = job.location.toLowerCase().trim();
     if (preferred.includes(jobLoc)) {
       score += 20;
     }
-    // If user prefers remote and job is remote, give full location points
     if (job.jobType === "remote") {
       score += 20;
     }
   }
 
-  // --- 3. Experience level match (0-20 points) ---
   if (user.yearsOfExperience != null) {
     const exp = user.yearsOfExperience;
     if (exp >= job.experienceMin && exp <= job.experienceMax) {
-      score += 20; // perfect fit
+      score += 20;
     } else if (exp >= job.experienceMin - 1 && exp <= job.experienceMax + 1) {
-      score += 10; // close fit
+      score += 10;
     }
   }
 
-  // --- 4. Salary range match (0-10 points) ---
   if (user.expectedLPA != null && job.salaryMax > 0) {
     if (user.expectedLPA >= job.salaryMin && user.expectedLPA <= job.salaryMax) {
-      score += 10; // within range
+      score += 10;
     } else if (user.expectedLPA <= job.salaryMax * 1.2) {
-      score += 5; // slightly above
+      score += 5;
     }
   }
 
-  // --- 5. Job type preference match (0-10 points) ---
   if (user.jobType && job.jobType) {
-    // Map user's jobType to the job's jobType values
     const typeMap = {
       "full-time": ["onsite", "hybrid"],
       remote: ["remote"],
       hybrid: ["hybrid"],
-      contract: ["remote", "hybrid", "onsite"], // contract can be anything
+      contract: ["remote", "hybrid", "onsite"],
     };
     const acceptableTypes = typeMap[user.jobType] || [];
     if (acceptableTypes.includes(job.jobType)) {
@@ -66,11 +60,9 @@ function calculateMatchScore(user, job) {
  * Get matched jobs for a user, with optional filters, sorted by score
  */
 async function getMatchedJobs(userId, filters = {}, page = 1, limit = 10) {
-  // 1. Get the user
   const user = await User.findById(userId);
   if (!user) throw new Error("User not found");
 
-  // 2. Build MongoDB query from filters
   const query = {};
 
   if (filters.platform) {
@@ -95,19 +87,22 @@ async function getMatchedJobs(userId, filters = {}, page = 1, limit = 10) {
     query.salaryMin = { $lte: Number(filters.salaryMax) };
   }
 
-  // 3. Fetch ALL matching jobs (we score in-memory)
+  const existingApps = await Application.find({ userId: user._id }).select("jobId");
+  const appliedJobIds = existingApps.map(app => app.jobId);
+  
+  if (appliedJobIds.length > 0) {
+    query._id = { $nin: appliedJobIds };
+  }
+
   const jobs = await Job.find(query).lean();
 
-  // 4. Score each job
   const scoredJobs = jobs.map((job) => ({
     ...job,
     matchScore: calculateMatchScore(user, job),
   }));
 
-  // 5. Sort by score descending
   scoredJobs.sort((a, b) => b.matchScore - a.matchScore);
 
-  // 6. Paginate
   const total = scoredJobs.length;
   const start = (page - 1) * limit;
   const paginated = scoredJobs.slice(start, start + limit);

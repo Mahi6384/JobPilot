@@ -9,7 +9,8 @@
     "lint:fix": "eslint . --ext .js --fix",
     "format": "prettier --write \"**/*.{js,json}\"",
     "format:check": "prettier --check \"**/*.{js,json}\"",
-    "validate": "node -e \"require('./utils/envValidator').validateEnv()\""
+    "validate": "node -e \"require('./utils/envValidator').validateEnv()\"",
+    "scrape": "node scraper/index.js"
   },
   "keywords": [],
   "author": "",
@@ -27,7 +28,7 @@
     "mongoose": "^8.16.4",
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",
-    "playwright": "^1.54.1"
+    "playwright": "^1.58.2"
   },
   "devDependencies": {
     "eslint": "^9.30.1",

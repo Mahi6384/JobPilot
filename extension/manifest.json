@@ -20,9 +20,11 @@
     "default_popup": "popup/popup.html"
   },
   "externally_connectable": {
-    "matches": ["http://localhost:5173/*"]
+    "matches": [
+      "http://localhost:5173/*",
+      "https://jobpilot-wheat.vercel.app/*"
+    ]
   },
-
   "content_scripts": [
     {
       "matches": ["*://www.naukri.com/*"],

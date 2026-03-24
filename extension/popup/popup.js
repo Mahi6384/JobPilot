@@ -1,3 +1,6 @@
+const IS_DEV = false; // Change to true for local development!
+const API_BASE = IS_DEV ? "http://localhost:5000/api" : "https://jobpilot-production-3ba1.up.railway.app/api";
+
 // DOM elements
 const loginView = document.getElementById("loginView");
 const connectedView = document.getElementById("connectedView");
@@ -55,7 +58,7 @@ loginBtn.addEventListener("click", async () => {
 
     // Call your existing login endpoint
     // We use fetch directly here because we don't have a token yet
-    const response = await fetch("http://localhost:5000/api/auth/login", {
+    const response = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),

@@ -1,4 +1,7 @@
 import React, { useState } from "react";
+import { Mail, Lock, User } from "lucide-react";
+
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.MODE === 'development' ? "http://localhost:5000" : "https://jobpilot-production-3ba1.up.railway.app");
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { GoogleLogin } from "@react-oauth/google";
@@ -29,7 +32,7 @@ function AuthForm({
 
     try {
       const endpoint = newUser ? "/api/auth/signup" : "/api/auth/login";
-      const response = await axios.post(`http://localhost:5000${endpoint}`, {
+      const response = await axios.post(`${API_BASE}${endpoint}`, {
         email: formData.email,
         password: formData.password,
         ...(newUser && { name: formData.name }),
@@ -56,7 +59,7 @@ function AuthForm({
     setLoading(true);
     try {
       const response = await axios.post(
-        `http://localhost:5000/api/auth/google`,
+        `${API_BASE}/api/auth/google`,
         {
           credential: credentialResponse.credential,
         },

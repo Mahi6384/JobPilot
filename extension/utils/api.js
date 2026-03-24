@@ -1,6 +1,7 @@
 // API wrapper for calling JobPilot backend
 
-const API_BASE = "http://localhost:5000/api";
+const IS_DEV = false; // Change to true for local development!
+const API_BASE = IS_DEV ? "http://localhost:5000/api" : "https://jobpilot-production-3ba1.up.railway.app/api";
 
 // Main fetch wrapper - adds auth header automatically
 async function apiCall(endpoint, options = {}) {

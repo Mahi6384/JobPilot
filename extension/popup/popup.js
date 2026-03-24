@@ -1,7 +1,7 @@
-const IS_DEV = false; // Change to true for local development!
-const API_BASE = IS_DEV ? "http://localhost:5000/api" : "https://jobpilot-production-3ba1.up.railway.app/api";
+
 
 // DOM elements
+
 const loginView = document.getElementById("loginView");
 const connectedView = document.getElementById("connectedView");
 const emailInput = document.getElementById("emailInput");

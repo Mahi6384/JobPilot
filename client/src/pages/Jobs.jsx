@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import api from "../utils/api";
-import JobFilters from "../components/jobs/JobFilters";
-import JobList from "../components/jobs/JobList";
-import JobDetail from "../components/jobs/JobDetail";
-import ApplyBar from "../components/jobs/ApplyBar";
+import JobFilters from "../components/Jobs/JobFilters";
+import JobList from "../components/Jobs/JobList";
+import JobDetail from "../components/Jobs/JobDetail";
+import ApplyBar from "../components/Jobs/ApplyBar";
 
 function Jobs() {
   const [jobs, setJobs] = useState([]);

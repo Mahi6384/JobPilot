@@ -1,0 +1,37 @@
+name: Scheduled Job Scraper
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Fires every 6 hours; script self-throttles to ~18h
+  workflow_dispatch: # Manual trigger button in GitHub UI
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install server dependencies
+        working-directory: ./server
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: ./server
+        run: npx playwright install chromium --with-deps
+
+      - name: Run scraper
+        working-directory: ./server
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          JSEARCH_API_KEY: ${{ secrets.JSEARCH_API_KEY }}
+          CI: 'true'
+          NODE_ENV: production
+        run: node scraper/index.js

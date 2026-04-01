@@ -122,11 +122,16 @@ async function processJob(application, jobUrl) {
   // 4. Wait a bit extra for Naukri's dynamic content to render
   await delay(3000);
 
-  // 5. Inject the Naukri content script
-  logger.info(`Injecting content script into tab ${tab.id}...`);
+  // 5. Inject the correct content script based on platform
+  let contentScript = "content-scripts/naukri.js";
+  if (jobUrl.includes("linkedin.com")) {
+    contentScript = "content-scripts/linkedin.js";
+  }
+
+  logger.info(`Injecting ${contentScript} into tab ${tab.id}...`);
   await chrome.scripting.executeScript({
     target: { tabId: tab.id },
-    files: ["content-scripts/naukri.js"],
+    files: [contentScript],
   });
 
   // 6. Tell the content script to apply

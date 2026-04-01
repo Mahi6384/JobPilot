@@ -11,7 +11,10 @@
     "format": "prettier --write \"**/*.{js,json}\"",
     "format:check": "prettier --check \"**/*.{js,json}\"",
     "validate": "node -e \"require('./utils/envValidator').validateEnv()\"",
-    "scrape": "node scraper/index.js"
+    "scrape": "node scraper/index.js",
+    "scrape:naukri": "node scraper/index.js --naukri-only",
+    "scrape:linkedin": "node scraper/index.js --linkedin-only",
+    "scrape:force": "node scraper/index.js --force"
   },
   "keywords": [],
   "author": "",

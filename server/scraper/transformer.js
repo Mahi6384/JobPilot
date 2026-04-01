@@ -69,4 +69,37 @@ function transformJobs(rawJobs) {
   });
 }
 
-module.exports = { transformJobs, parseExperience, parseSalary, cleanSkills };
+function transformLinkedinJobs(rawJobs) {
+  return rawJobs.map((job) => {
+    const exp = parseExperience(job.experience);
+    const salary = parseSalary(job.salary);
+
+    return {
+      title: job.title || "Unknown",
+      company: job.company || "Unknown",
+      location: job.location || "Not specified",
+      jobType: detectJobType(job.location || "", job.title || ""),
+      experienceMin: exp.min,
+      experienceMax: exp.max,
+      salaryMin: job.salaryMin || salary.min,
+      salaryMax: job.salaryMax || salary.max,
+      skills: cleanSkills(job.skills),
+      description:
+        job.description ||
+        `${job.title} at ${job.company}. Experience: ${job.experience || "N/A"}. Salary: ${job.salary || "Not disclosed"}`,
+      platform: "linkedin",
+      applicationUrl: job.applicationUrl,
+      easyApply: false, // Unknown from JSearch; extension checks at apply time
+      postedDate: job.postedDate || new Date(),
+      scrapedAt: new Date(),
+    };
+  });
+}
+
+module.exports = {
+  transformJobs,
+  transformLinkedinJobs,
+  parseExperience,
+  parseSalary,
+  cleanSkills,
+};

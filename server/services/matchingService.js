@@ -4,6 +4,31 @@ const Application = require("../models/applicationModel");
 function calculateMatchScore(user, job) {
   let score = 0;
 
+  // Title relevance: Most important factor
+  if (user.targetJobTitle && job.title) {
+    const targetTitle = user.targetJobTitle.toLowerCase().trim();
+    const jobTitle = job.title.toLowerCase().trim();
+
+    if (jobTitle.includes(targetTitle) || targetTitle.includes(jobTitle)) {
+      score += 40; // High match
+    } else {
+      const targetWords = targetTitle.split(/\s+/).map(w => w.replace(/[^a-z0-9]/g, '')).filter(w => w.length > 2);
+      const jobWords = jobTitle.split(/\s+/).map(w => w.replace(/[^a-z0-9]/g, '')).filter(w => w.length > 2);
+      
+      let commonWords = 0;
+      targetWords.forEach(w => {
+        if (jobWords.includes(w)) commonWords++;
+      });
+      
+      if (commonWords > 0) {
+        score += Math.min(30, commonWords * 15);
+      } else {
+        // Hard filter: if title has zero word overlap, it's highly irrelevant.
+        return 0; 
+      }
+    }
+  }
+
   if (user.skills && user.skills.length > 0 && job.skills && job.skills.length > 0) {
     const userSkills = user.skills.map((s) => s.toLowerCase().trim());
     const jobSkills = job.skills.map((s) => s.toLowerCase().trim());
@@ -96,10 +121,13 @@ async function getMatchedJobs(userId, filters = {}, page = 1, limit = 10) {
 
   const jobs = await Job.find(query).lean();
 
-  const scoredJobs = jobs.map((job) => ({
+  let scoredJobs = jobs.map((job) => ({
     ...job,
     matchScore: calculateMatchScore(user, job),
   }));
+
+  // Filter out irrelevant jobs
+  scoredJobs = scoredJobs.filter(job => job.matchScore > 0);
 
   scoredJobs.sort((a, b) => b.matchScore - a.matchScore);
 

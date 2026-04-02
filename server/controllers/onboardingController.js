@@ -3,6 +3,14 @@ const Job = require("../models/jobModel");
 const ScrapeQuery = require("../models/scrapeQueryModel");
 const { runOnDemandScrape } = require("../services/onDemandScraper");
 const logger = require("../utils/logger");
+const pdf = require("pdf-parse");
+
+const COMMON_SKILLS = [
+  "javascript", "python", "java", "c++", "c#", "ruby", "php", "typescript", "swift", "kotlin", "go", "rust",
+  "html", "css", "react", "angular", "vue", "node.js", "express", "django", "flask", "spring", "asp.net",
+  "sql", "mysql", "postgresql", "mongodb", "redis", "elasticsearch", "aws", "azure", "gcp", "docker", 
+  "kubernetes", "git", "linux", "unix", "agile", "scrum", "machine learning", "data science", "nlp"
+];
 
 // Get onboarding status and current step data
 const getOnboardingStatus = async (req, res) => {
@@ -300,9 +308,70 @@ const updateProfile = async (req, res) => {
   }
 };
 
+// Parse Resume
+const parseResume = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No resume file uploaded" });
+    }
+    
+    // Parse the PDF
+    const data = await pdf(req.file.buffer);
+    const text = data.text.toLowerCase();
+    
+    // Non-AI Extractor
+    const extractedSkills = new Set();
+    COMMON_SKILLS.forEach(skill => {
+      // Escape specical chars
+      const escapedSkill = skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      
+      // If skill ends with a word character (like a, b, 1), we can use \b. 
+      // If it ends with a non-word char (like + or #), \b will fail if followed by space.
+      // E.g., 'c++' -> ends with '+'. We should use (?!\w) or (?=[^a-zA-Z0-9_]|$) instead.
+      const startBoundary = /^\w/.test(skill) ? '\\b' : '';
+      const endBoundary = /\w$/.test(skill) ? '\\b' : '(?![a-zA-Z0-9_])';
+
+      const regex = new RegExp(`${startBoundary}${escapedSkill}${endBoundary}`, "i");
+      if (regex.test(text)) {
+        // Find proper casing
+        const originalIndex = COMMON_SKILLS.indexOf(skill);
+        extractedSkills.add(COMMON_SKILLS[originalIndex]); // Using original array order as our list. We can improve casing later.
+      }
+    });
+    
+    // Better casing mapping (simplistic)
+    const formattedSkills = Array.from(extractedSkills).map(s => {
+      if (s === "javascript") return "JavaScript";
+      if (s === "typescript") return "TypeScript";
+      if (s === "java") return "Java";
+      if (s === "python") return "Python";
+      if (s === "react") return "React";
+      if (s === "node.js") return "Node.js";
+      if (s === "html") return "HTML";
+      if (s === "css") return "CSS";
+      if (s === "sql") return "SQL";
+      if (s === "aws") return "AWS";
+      if (s === "docker") return "Docker";
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    });
+
+    res.status(200).json({
+      success: true,
+      skills: formattedSkills,
+      // Minimal simulated parsing
+      yearsOfExperience: text.match(/\b([1-9][0-9]?)\s*(?:\+)?\s*years/i)?.[1] || "0",
+    });
+
+  } catch (error) {
+    logger.error("Resume parsing error", error);
+    res.status(500).json({ message: "Failed to parse resume", error: error.message });
+  }
+};
+
 module.exports = {
   getOnboardingStatus,
   saveStep,
   getProfile,
   updateProfile,
+  parseResume,
 };

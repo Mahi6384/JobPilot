@@ -1,7 +1,11 @@
 import React, { useState } from "react";
+import axios from "axios";
+
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.MODE === 'development' ? "http://localhost:5000" : "https://jobpilot-production-3ba1.up.railway.app");
 
 function SkillsResumeStep({ formData, setFormData, errors }) {
   const [skillInput, setSkillInput] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -42,6 +46,49 @@ function SkillsResumeStep({ formData, setFormData, errors }) {
         ...formData,
         skills: [...(formData.skills || []), skill],
       });
+    }
+  };
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      alert("Please upload a PDF file");
+      return;
+    }
+
+    setIsUploading(true);
+    const formDataUpload = new FormData();
+    formDataUpload.append("resume", file);
+
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.post(`${API_BASE}/api/onboarding/parse-resume`, formDataUpload, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      const { skills } = response.data;
+      if (skills && skills.length > 0) {
+        // Merge with existing avoiding duplicates
+        const currentSkills = new Set(formData.skills || []);
+        skills.forEach(s => currentSkills.add(s));
+        
+        setFormData({
+          ...formData,
+          skills: Array.from(currentSkills)
+        });
+        alert(`Successfully extracted ${skills.length} skills from your resume!`);
+      } else {
+        alert("We couldn't automatically find common skills in your resume. You can add them manually.");
+      }
+    } catch (error) {
+      console.error("Resume parsing error:", error);
+      alert("Failed to parse resume. Please try again or add skills manually.");
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -140,23 +187,42 @@ function SkillsResumeStep({ formData, setFormData, errors }) {
         {/* Resume Upload Placeholder */}
         <div className="flex flex-col">
           <label className="text-sm font-medium text-gray-300 mb-2">
-            Resume <span className="text-gray-500">(Coming soon)</span>
+            Auto-fill Skills from Resume <span className="text-gray-500">(PDF only)</span>
           </label>
-          <div className="w-full px-4 py-8 rounded-lg border-2 border-dashed border-gray-700 text-center">
-            <svg
-              className="w-10 h-10 mx-auto text-gray-600 mb-2"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-              />
-            </svg>
-            <p className="text-gray-500 text-sm">Resume upload will be available soon</p>
+          <div className="relative">
+            <input 
+              type="file" 
+              accept=".pdf" 
+              onChange={handleFileUpload}
+              disabled={isUploading}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed" 
+            />
+            <div className={`w-full px-4 py-8 rounded-lg border-2 border-dashed ${isUploading ? 'border-blue-500 bg-blue-500/10' : 'border-gray-700 bg-gray-900/50 hover:bg-gray-800'} text-center transition-colors`}>
+              {isUploading ? (
+                <div className="animate-pulse">
+                  <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                  <p className="text-blue-400 text-sm font-medium">Extracting skills from resume...</p>
+                </div>
+              ) : (
+                <>
+                  <svg
+                    className="w-10 h-10 mx-auto text-gray-500 mb-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                    />
+                  </svg>
+                  <p className="text-gray-300 text-sm font-medium">Click or drag PDF to automatically extract skills</p>
+                  <p className="text-gray-500 text-xs mt-1">We'll scan for common tech keywords</p>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>

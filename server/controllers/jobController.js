@@ -1,5 +1,6 @@
 const Job = require("../models/jobModel");
 const User = require("../models/userModel");
+const Application = require("../models/applicationModel");
 const getMatchedJobs = require("../services/matchingService").getMatchedJobs;
 const logger = require("../utils/logger");
 
@@ -67,12 +68,35 @@ const getDashboardData = async (req, res) => {
                 { status: { $exists: false } }
             ]
         });
-        
+
+        // Compute real stats from Application model
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        const [appliedToday, totalApplied, totalApplications] = await Promise.all([
+            Application.countDocuments({
+                userId: req.userId,
+                status: "applied",
+                appliedAt: { $gte: todayStart },
+            }),
+            Application.countDocuments({
+                userId: req.userId,
+                status: "applied",
+            }),
+            Application.countDocuments({
+                userId: req.userId,
+            }),
+        ]);
+
+        const successRate = totalApplications > 0
+            ? Math.round((totalApplied / totalApplications) * 100)
+            : 0;
+
         return res.status(200).json({
             stats: {
                 totalMatches,
-                appliedToday: 0,  // Placeholder for future
-                successRate: 0,   // Placeholder for future
+                appliedToday,
+                successRate,
             },
             topJobs: topJobs.jobs,
         });

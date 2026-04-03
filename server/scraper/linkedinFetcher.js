@@ -21,9 +21,7 @@ function buildRequestOptions(query, page = 1) {
 
 function filterLinkedinJobs(jobs) {
   return jobs.filter((job) => {
-    const isLinkedIn =
-      job.job_publisher?.toLowerCase().includes("linkedin") ||
-      job.job_apply_link?.includes("linkedin.com");
+    const isLinkedIn = job.job_apply_link?.includes("linkedin.com");
     return isLinkedIn;
   });
 }

@@ -6,7 +6,14 @@ async function filterNewJobs(jobs) {
   const existingUrls = await Job.distinct("applicationUrl");
   const existingSet = new Set(existingUrls);
 
-  const newJobs = jobs.filter((job) => !existingSet.has(job.applicationUrl));
+  const uniqueMap = new Map();
+  for (const job of jobs) {
+    if (!existingSet.has(job.applicationUrl) && !uniqueMap.has(job.applicationUrl)) {
+      uniqueMap.set(job.applicationUrl, job);
+    }
+  }
+
+  const newJobs = Array.from(uniqueMap.values());
 
   console.log(
     `   📊 ${jobs.length} scraped → ${newJobs.length} new (${jobs.length - newJobs.length} duplicates skipped)`,

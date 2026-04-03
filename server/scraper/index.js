@@ -184,6 +184,16 @@ async function runScraper() {
     console.log(`\n   📈 Total new jobs added: ${totalNewJobs}`);
     console.log(`   📊 Total Naukri jobs in DB: ${totalNaukri}`);
     console.log(`   📊 Total LinkedIn jobs in DB: ${totalLinkedin}`);
+
+    // --- Classification Worker Phase ---
+    if (platforms.includes("linkedin")) {
+      console.log(`\n${"=".repeat(60)}`);
+      console.log("🚦 RUNNING CLASSIFICATION WORKER");
+      console.log(`${"=".repeat(60)}\n`);
+      const { processLinkedInJobs } = require("../workers/linkedinClassifier");
+      await processLinkedInJobs();
+    }
+
     console.log("\n✅ Scraping completed!\n");
   } catch (error) {
     console.error("\n❌ Scraper error:", error.message);

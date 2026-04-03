@@ -21,8 +21,20 @@ const jobSchema = new mongoose.Schema(
       enum: ["linkedin", "naukri", "indeed"],
       required: true,
     },
-    applicationUrl: { type: String, required: true },
+    applicationUrl: { type: String, required: true, unique: true },
     easyApply: { type: Boolean, default: false },
+    status: {
+      type: String,
+      enum: ["new", "processing", "done", "failed"],
+      default: "new",
+    },
+    applyType: {
+      type: String,
+      enum: ["pending", "easy_apply", "company_site"],
+      default: "pending",
+    },
+    retryCount: { type: Number, default: 0 },
+    classifiedAt: { type: Date },
     postedDate: { type: Date },
     scrapedAt: { type: Date, default: Date.now },
   },
@@ -33,6 +45,7 @@ jobSchema.index({ skills: 1 });
 jobSchema.index({ location: 1 });
 jobSchema.index({ jobType: 1 });
 jobSchema.index({ platform: 1 });
+jobSchema.index({ applicationUrl: 1 }, { unique: true });
 
 const Job = mongoose.model("Job", jobSchema);
 module.exports = Job;

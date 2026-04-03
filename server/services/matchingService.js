@@ -88,7 +88,12 @@ async function getMatchedJobs(userId, filters = {}, page = 1, limit = 10) {
   const user = await User.findById(userId);
   if (!user) throw new Error("User not found");
 
-  const query = {};
+  const query = {
+    $or: [
+      { status: "done" },
+      { status: { $exists: false } }
+    ]
+  };
 
   if (filters.platform) {
     query.platform = { $in: Array.isArray(filters.platform) ? filters.platform : [filters.platform] };

@@ -61,7 +61,12 @@ const getJobsById = async (req, res) =>{
 const getDashboardData = async (req, res) => {
     try {
         const topJobs = await getMatchedJobs(req.userId, {}, 1, 5);
-        const totalMatches = await Job.countDocuments();
+        const totalMatches = await Job.countDocuments({
+            $or: [
+                { status: "done" },
+                { status: { $exists: false } }
+            ]
+        });
         
         return res.status(200).json({
             stats: {

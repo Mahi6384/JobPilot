@@ -70,6 +70,8 @@ async function startApplicationProcess() {
       const app = applications[i];
       const jobTitle = app.jobId?.title || "Unknown Job";
       const jobUrl = app.jobId?.applicationUrl;
+      const platform = app.jobId?.platform || app.platform;
+      const applyType = app.jobId?.applyType;
 
       logger.info(`Processing ${currentJobIndex}/${totalJobs}: ${jobTitle}`);
       sendProgressToPopup(
@@ -81,6 +83,22 @@ async function startApplicationProcess() {
       if (!jobUrl) {
         logger.error(`No URL for job: ${jobTitle}`);
         await updateApplicationStatus(app._id, "failed", "No application URL");
+        continue;
+      }
+
+      // Skip LinkedIn company-site jobs — they can't be auto-applied
+      if (platform === "linkedin" && applyType === "company_site") {
+        logger.info(`⏭️ Skipping company-site job: ${jobTitle}`);
+        sendProgressToPopup(
+          `Skipped (company site): ${jobTitle}`,
+          currentJobIndex,
+          totalJobs,
+        );
+        await updateApplicationStatus(
+          app._id,
+          "review_needed",
+          "Company site application — apply manually via the job URL",
+        );
         continue;
       }
 
@@ -119,20 +137,27 @@ async function processJob(application, jobUrl) {
   await waitForTabLoad(tab.id);
   logger.info(`Tab ${tab.id} loaded`);
 
-  // 4. Wait a bit extra for Naukri's dynamic content to render
+  // 4. Wait a bit extra for dynamic content to render
   await delay(3000);
 
   // 5. Inject the correct content script based on platform
+  //    For LinkedIn: linkedin.js is already registered in manifest.json,
+  //    but we inject programmatically as a fallback for reliability
   let contentScript = "content-scripts/naukri.js";
   if (jobUrl.includes("linkedin.com")) {
     contentScript = "content-scripts/linkedin.js";
   }
 
   logger.info(`Injecting ${contentScript} into tab ${tab.id}...`);
-  await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    files: [contentScript],
-  });
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: [contentScript],
+    });
+  } catch (injectErr) {
+    // May fail if script already injected via manifest — that's OK
+    logger.warn(`Script injection note: ${injectErr.message}`);
+  }
 
   // 6. Tell the content script to apply
   logger.info(`Sending applyToJob message to tab ${tab.id}...`);

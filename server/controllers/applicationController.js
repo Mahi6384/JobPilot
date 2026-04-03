@@ -106,7 +106,7 @@ exports.getApplications = async (req, res) => {
     const applications = await Application.find(filter)
       .populate(
         "jobId",
-        "title company location salary platform applicationUrl",
+        "title company location salary platform applicationUrl applyType easyApply",
       )
       .sort({ createdAt: -1 })
       .skip(skip)

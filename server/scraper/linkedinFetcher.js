@@ -2,23 +2,6 @@ const config = require("./config");
 
 const JSEARCH_BASE_URL = "https://jsearch.p.rapidapi.com/search";
 
-function buildRequestOptions(query, page = 1) {
-  const params = new URLSearchParams({
-    query: `${query} India`,
-    page: page.toString(),
-    num_pages: "1",
-    date_posted: config.linkedinDatePosted || "week",
-  });
-
-  return {
-    method: "GET",
-    headers: {
-      "X-RapidAPI-Key": config.jsearchApiKey,
-      "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
-    },
-  };
-}
-
 function filterLinkedinJobs(jobs) {
   return jobs.filter((job) => {
     const isLinkedIn = job.job_apply_link?.includes("linkedin.com");
@@ -74,8 +57,9 @@ function mapToRawJob(job) {
 }
 
 async function scrapeQuery(query) {
-  if (!config.jsearchApiKey) {
-    console.log("   ⚠️  JSEARCH_API_KEY not set, skipping LinkedIn fetch");
+  const apiKey = config.getJsearchApiKey();
+  if (!apiKey) {
+    console.log("   ⚠️  No JSEARCH_API_KEYS set, skipping LinkedIn fetch");
     return [];
   }
 
@@ -90,12 +74,12 @@ async function scrapeQuery(query) {
     });
 
     const url = `${JSEARCH_BASE_URL}?${params.toString()}`;
-    console.log(`   🔗 Fetching LinkedIn jobs from JSearch API...`);
+    console.log(`   🔗 Fetching LinkedIn jobs from JSearch API (key pool: ${config.jsearchKeyCount})...`);
 
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        "X-RapidAPI-Key": config.jsearchApiKey,
+        "X-RapidAPI-Key": apiKey,
         "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
       },
     });
@@ -129,3 +113,4 @@ async function scrapeQuery(query) {
 }
 
 module.exports = { scrapeQuery, filterLinkedinJobs, mapToRawJob };
+

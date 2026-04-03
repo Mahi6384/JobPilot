@@ -1,5 +1,5 @@
 import React from "react";
-import { X, ExternalLink, MapPin, Briefcase, DollarSign, Clock } from "lucide-react";
+import { X, ExternalLink, MapPin, Briefcase, DollarSign, Clock, Zap } from "lucide-react";
 
 function JobDetail({ job, onClose }) {
   if (!job) return null;
@@ -9,6 +9,49 @@ function JobDetail({ job, onClose }) {
     if (score >= 60) return "text-blue-400";
     if (score >= 40) return "text-yellow-400";
     return "text-red-400";
+  };
+
+  const getApplyTypeInfo = () => {
+    if (job.platform !== "linkedin") return null;
+
+    switch (job.applyType) {
+      case "easy_apply":
+        return (
+          <div className="flex items-start gap-3 p-3 bg-green-600/10 border border-green-600/20 rounded-lg">
+            <Zap className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-green-400 font-medium text-sm">LinkedIn Easy Apply</p>
+              <p className="text-gray-400 text-xs mt-1">
+                This job supports LinkedIn Easy Apply — our extension can auto-apply for you!
+              </p>
+            </div>
+          </div>
+        );
+      case "company_site":
+        return (
+          <div className="flex items-start gap-3 p-3 bg-orange-600/10 border border-orange-600/20 rounded-lg">
+            <ExternalLink className="w-5 h-5 text-orange-400 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-orange-400 font-medium text-sm">Company Site Application</p>
+              <p className="text-gray-400 text-xs mt-1">
+                This job redirects to the company website — you'll need to apply manually.
+              </p>
+            </div>
+          </div>
+        );
+      default:
+        return (
+          <div className="flex items-start gap-3 p-3 bg-gray-600/10 border border-gray-600/20 rounded-lg">
+            <Clock className="w-5 h-5 text-gray-400 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-gray-400 font-medium text-sm">Classification Pending</p>
+              <p className="text-gray-500 text-xs mt-1">
+                We're still checking if this job supports Easy Apply. Check back soon.
+              </p>
+            </div>
+          </div>
+        );
+    }
   };
 
   return (
@@ -64,6 +107,13 @@ function JobDetail({ job, onClose }) {
               {job.platform}
             </span>
           </div>
+
+          {/* Apply Type Info (LinkedIn only) */}
+          {getApplyTypeInfo() && (
+            <div className="mb-6">
+              {getApplyTypeInfo()}
+            </div>
+          )}
 
           {/* Skills */}
           <div className="mb-6">

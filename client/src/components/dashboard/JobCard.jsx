@@ -1,5 +1,5 @@
 import React from "react";
-import { MapPin, Briefcase } from "lucide-react";
+import { MapPin, Briefcase, Zap, ExternalLink } from "lucide-react";
 
 function JobCard({ job, onClick, showCheckbox = false, isSelected = false, onToggleSelect }) {
   const platformColors = {
@@ -13,6 +13,33 @@ function JobCard({ job, onClick, showCheckbox = false, isSelected = false, onTog
     if (score >= 60) return "from-blue-500 to-cyan-600";
     if (score >= 40) return "from-yellow-500 to-orange-600";
     return "from-red-500 to-pink-600";
+  };
+
+  const getApplyTypeBadge = () => {
+    if (job.platform !== "linkedin") return null;
+
+    switch (job.applyType) {
+      case "easy_apply":
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-600/20 text-green-400 text-xs rounded border border-green-600/30">
+            <Zap className="w-3 h-3" />
+            Easy Apply
+          </span>
+        );
+      case "company_site":
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-600/20 text-orange-400 text-xs rounded border border-orange-600/30">
+            <ExternalLink className="w-3 h-3" />
+            Company Site
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-600/20 text-gray-400 text-xs rounded border border-gray-600/30">
+            ⏳ Checking...
+          </span>
+        );
+    }
   };
 
   const handleClick = () => {
@@ -64,10 +91,11 @@ function JobCard({ job, onClick, showCheckbox = false, isSelected = false, onTog
             )}
           </div>
 
-          <div className="flex items-center gap-4 text-xs text-gray-400">
+          <div className="flex items-center gap-3 text-xs text-gray-400 flex-wrap">
             <span className={`${platformColors[job.platform] || "bg-gray-600"} text-white px-2 py-1 rounded capitalize`}>
               {job.platform}
             </span>
+            {getApplyTypeBadge()}
             <span className="flex items-center gap-1">
               <MapPin className="w-3 h-3" />
               {job.location}

@@ -1,6 +1,7 @@
 const { chromium } = require("playwright");
-const { scrapeQuery } = require("../scraper/naukriScraper");
-const { transformJobs } = require("../scraper/transformer");
+const { scrapeQuery: scrapeNaukriQuery } = require("../scraper/naukriScraper");
+const { scrapeQuery: fetchLinkedinJobs } = require("../scraper/linkedinFetcher");
+const { transformJobs, transformLinkedinJobs } = require("../scraper/transformer");
 const { filterNewJobs } = require("../scraper/deduplicator");
 const Job = require("../models/jobModel");
 const User = require("../models/userModel");
@@ -10,7 +11,7 @@ const logger = require("../utils/logger");
 /**
  * Run a quick on-demand scrape for a single search query.
  * Designed to be called from within the Express server (fire-and-forget).
- * Only scrapes 1 page with up to 10 jobs for speed.
+ * Scrapes both Naukri (1 page, up to 10 jobs) and LinkedIn (via JSearch API).
  */
 async function runOnDemandScrape(userId, searchTerm) {
   let browser;
@@ -33,18 +34,47 @@ async function runOnDemandScrape(userId, searchTerm) {
       { upsert: true, new: true }
     );
 
-    browser = await chromium.launch({ headless: false });
+    let naukriJobs = [];
+    let linkedinJobs = [];
 
-    const rawJobs = await scrapeQuery(browser, searchTerm);
-    logger.info(`On-demand scrape: scraped ${rawJobs.length} raw jobs for "${searchTerm}"`);
+    // --- Naukri Scraping (Playwright) ---
+    try {
+      browser = await chromium.launch({ headless: false });
+      const rawNaukri = await scrapeNaukriQuery(browser, searchTerm);
+      logger.info(`On-demand scrape: scraped ${rawNaukri.length} Naukri jobs for "${searchTerm}"`);
 
-    if (rawJobs.length > 0) {
-      const transformedJobs = transformJobs(rawJobs);
-      const newJobs = await filterNewJobs(transformedJobs);
+      if (rawNaukri.length > 0) {
+        naukriJobs = transformJobs(rawNaukri);
+      }
+    } catch (err) {
+      logger.error(`On-demand Naukri scrape failed for "${searchTerm}"`, err);
+    }
+
+    // --- LinkedIn Fetching (JSearch API, no browser needed) ---
+    try {
+      const rawLinkedin = await fetchLinkedinJobs(searchTerm);
+      logger.info(`On-demand scrape: fetched ${rawLinkedin.length} LinkedIn jobs for "${searchTerm}"`);
+
+      if (rawLinkedin.length > 0) {
+        linkedinJobs = transformLinkedinJobs(rawLinkedin);
+      }
+    } catch (err) {
+      logger.error(`On-demand LinkedIn fetch failed for "${searchTerm}"`, err);
+    }
+
+    // --- Merge, Dedup, Insert ---
+    const allTransformed = [...naukriJobs, ...linkedinJobs];
+
+    if (allTransformed.length > 0) {
+      const newJobs = await filterNewJobs(allTransformed);
 
       if (newJobs.length > 0) {
         const inserted = await Job.insertMany(newJobs);
-        logger.info(`On-demand scrape: saved ${inserted.length} new jobs for "${searchTerm}"`);
+        const naukriCount = inserted.filter((j) => j.platform === "naukri").length;
+        const linkedinCount = inserted.filter((j) => j.platform === "linkedin").length;
+        logger.info(
+          `On-demand scrape: saved ${inserted.length} new jobs (${naukriCount} Naukri, ${linkedinCount} LinkedIn) for "${searchTerm}"`
+        );
       } else {
         logger.info(`On-demand scrape: all jobs already exist for "${searchTerm}"`);
       }

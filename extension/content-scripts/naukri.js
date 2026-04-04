@@ -2,8 +2,6 @@
 // This script is injected into Naukri job pages by the background worker
 // It finds the Apply button, clicks it, handles questionnaires, and reports back
 
-console.log("[JobPilot] Naukri content script loaded");
-
 // Listen for messages from background worker
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "applyToJob") {
@@ -18,14 +16,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Main function: find Apply button, click it, handle questionnaire
 async function applyToJob() {
-  console.log("[JobPilot] Starting application process...");
-
   // Step 1: Check if already applied
   const alreadyApplied = document.querySelector(
     ".styles_already-applied__MMRPM, .already-applied",
   );
   if (alreadyApplied) {
-    console.log("[JobPilot] Already applied to this job");
     return { success: true, message: "Already applied" };
   }
 
@@ -36,9 +31,6 @@ async function applyToJob() {
     findButtonByText("Apply");
 
   if (!applyBtn) {
-    console.log(
-      "[JobPilot] No Apply button found - might be 'Apply on Company Site'",
-    );
     return {
       success: false,
       error: "No Apply button found (likely external application)",
@@ -46,7 +38,6 @@ async function applyToJob() {
   }
 
   // Step 3: Click Apply
-  console.log("[JobPilot] Clicking Apply button...");
   applyBtn.click();
 
   // Step 4: Wait a moment for the response
@@ -54,12 +45,10 @@ async function applyToJob() {
 
   // Step 5: Check if applied immediately (no questionnaire)
   if (checkIfApplied()) {
-    console.log("[JobPilot] Applied successfully (instant apply)!");
     return { success: true, message: "Applied instantly" };
   }
 
   // Step 6: Questionnaire appeared - handle it
-  console.log("[JobPilot] Questionnaire detected, handling questions...");
   const questionResult = await handleQuestionnaire();
   return questionResult;
 }
@@ -73,7 +62,6 @@ async function handleQuestionnaire() {
 
     // Check if we're done (applied successfully)
     if (checkIfApplied()) {
-      console.log("[JobPilot] Applied successfully after questionnaire!");
       return { success: true, message: "Applied after answering questions" };
     }
 
@@ -84,7 +72,6 @@ async function handleQuestionnaire() {
       document.querySelector("[class*='skip']");
 
     if (skipBtn) {
-      console.log(`[JobPilot] Skipping question ${i + 1}...`);
       skipBtn.click();
       await delay(1000);
       continue;
@@ -97,7 +84,6 @@ async function handleQuestionnaire() {
       findButtonByText("Submit");
 
     if (saveBtn) {
-      console.log("[JobPilot] Clicking Save/Submit...");
       saveBtn.click();
       await delay(2000);
 
@@ -113,7 +99,6 @@ async function handleQuestionnaire() {
     );
     if (inputField) {
       // For number questions (CTC, experience), fill with "0"
-      console.log("[JobPilot] Filling input with default value...");
       inputField.value = "0";
       inputField.dispatchEvent(new Event("input", { bubbles: true }));
       inputField.dispatchEvent(new Event("change", { bubbles: true }));
@@ -131,7 +116,6 @@ async function handleQuestionnaire() {
       continue;
     }
 
-    console.log(`[JobPilot] No actionable element found in attempt ${i + 1}`);
   }
 
   return { success: false, error: "Could not complete questionnaire" };

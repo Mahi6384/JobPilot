@@ -2,8 +2,6 @@
 // Injected into LinkedIn job pages by the background worker
 // Finds the Easy Apply button, clicks it, handles the modal, and reports back
 
-console.log("[JobPilot] LinkedIn content script loaded");
-
 // Listen for messages from background worker
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "applyToJob") {
@@ -18,18 +16,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Main function: find Easy Apply button, click it, handle modal
 async function applyToJob() {
-  console.log("[JobPilot] Starting LinkedIn application process...");
-
   // Step 1: Check if already applied
   if (checkIfAlreadyApplied()) {
-    console.log("[JobPilot] Already applied to this job");
     return { success: true, message: "Already applied" };
   }
 
   // Step 2: Find the Easy Apply button
   const easyApplyBtn = findEasyApplyButton();
   if (!easyApplyBtn) {
-    console.log("[JobPilot] No Easy Apply button found");
     return {
       success: false,
       error: "No Easy Apply button found (might be external application)",
@@ -37,25 +31,29 @@ async function applyToJob() {
   }
 
   // Step 3: Click Easy Apply
-  console.log("[JobPilot] Clicking Easy Apply button...");
-  easyApplyBtn.click();
+  // LinkedIn renders Easy Apply as an <a> tag — use dispatchEvent to trigger
+  // LinkedIn's JS handler without letting the browser navigate away from the page.
+  const isAnchor = easyApplyBtn.tagName === "A";
+  if (isAnchor) {
+    easyApplyBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  } else {
+    easyApplyBtn.click();
+  }
 
-  // Step 4: Wait for modal to appear
-  await delay(2000);
+  // Step 4: Wait for modal to appear (give LinkedIn extra time to render)
+  await delay(3000);
 
   // Step 5: Check if modal appeared
   const modal = findEasyApplyModal();
   if (!modal) {
     // Sometimes clicking Easy Apply applies instantly (1-click apply)
     if (checkIfAlreadyApplied()) {
-      console.log("[JobPilot] Applied instantly (1-click)!");
       return { success: true, message: "Applied instantly" };
     }
     return { success: false, error: "Easy Apply modal did not appear" };
   }
 
   // Step 6: Handle the multi-step modal
-  console.log("[JobPilot] Easy Apply modal detected, stepping through...");
   const result = await handleEasyApplyModal(modal);
   return result;
 }
@@ -69,7 +67,6 @@ async function handleEasyApplyModal() {
 
     // Check if we're done (success message appeared)
     if (checkIfApplicationSubmitted()) {
-      console.log("[JobPilot] Application submitted successfully!");
       return { success: true, message: "Applied via Easy Apply modal" };
     }
 
@@ -87,7 +84,6 @@ async function handleEasyApplyModal() {
     // Look for Submit button first (final step)
     const submitBtn = findButtonByAriaLabel("Submit application");
     if (submitBtn) {
-      console.log("[JobPilot] Clicking Submit application...");
       submitBtn.click();
       await delay(3000);
 
@@ -105,7 +101,6 @@ async function handleEasyApplyModal() {
     // Look for Review button (second-to-last step)
     const reviewBtn = findButtonByAriaLabel("Review your application");
     if (reviewBtn) {
-      console.log(`[JobPilot] Step ${step + 1}: Clicking Review...`);
       reviewBtn.click();
       await delay(1500);
       continue;
@@ -117,25 +112,18 @@ async function handleEasyApplyModal() {
       // Check for required unfilled fields before clicking Next
       const hasRequiredUnfilled = checkForRequiredFields();
       if (hasRequiredUnfilled) {
-        console.log(
-          "[JobPilot] Required field detected that needs manual input",
-        );
         return {
           success: false,
           error: "Review needed: has required questions",
         };
       }
 
-      console.log(`[JobPilot] Step ${step + 1}: Clicking Next...`);
       nextBtn.click();
       await delay(1500);
       continue;
     }
 
-    // No actionable button found
-    console.log(
-      `[JobPilot] Step ${step + 1}: No Next/Review/Submit button found`,
-    );
+    // No actionable button found — try fallback controls
 
     // Try to find any button that might advance the form
     const fallbackBtn =
@@ -145,14 +133,11 @@ async function handleEasyApplyModal() {
       findButtonByText("Submit");
 
     if (fallbackBtn) {
-      console.log(`[JobPilot] Step ${step + 1}: Using fallback button...`);
       fallbackBtn.click();
       await delay(1500);
       continue;
     }
 
-    // Nothing to click, might be stuck
-    console.log(`[JobPilot] Step ${step + 1}: Stuck, no actionable elements`);
   }
 
   return { success: false, error: "Could not complete Easy Apply modal" };
@@ -161,32 +146,24 @@ async function handleEasyApplyModal() {
 // --- Helper Functions ---
 
 function findEasyApplyButton() {
-  // Method 1: Button with specific class
-  const btnByClass = document.querySelector(
-    "button.jobs-apply-button, button.jobs-apply-button--top-card",
+  // Method 1: aria-label (most reliable — LinkedIn uses this on both <button> and <a> tags)
+  const byAriaLabel = document.querySelector(
+    '[aria-label*="Easy Apply" i], [aria-label*="EasyApply" i]'
   );
-  if (btnByClass && isEasyApply(btnByClass)) return btnByClass;
+  if (byAriaLabel) return byAriaLabel;
 
-  // Method 2: Button with aria-label containing "Easy Apply"
-  const btnByAria = document.querySelector(
-    'button[aria-label*="Easy Apply"]',
-  );
-  if (btnByAria) return btnByAria;
-
-  // Method 3: Find by text content
-  const allButtons = document.querySelectorAll("button");
-  for (const btn of allButtons) {
-    if (btn.textContent.trim().includes("Easy Apply")) {
-      return btn;
+  // Method 2: Search both buttons AND anchor tags (LinkedIn renders Easy Apply as <a> tag)
+  const allClickables = document.querySelectorAll("button, a, [role='button']");
+  for (const el of allClickables) {
+    // Skip nav/header elements
+    if (el.closest("header, nav, #global-nav")) continue;
+    const text = el.textContent.trim().toLowerCase();
+    if (text === "easy apply" || text.startsWith("easy apply ")) {
+      return el;
     }
   }
 
   return null;
-}
-
-function isEasyApply(button) {
-  const text = button.textContent.toLowerCase();
-  return text.includes("easy apply");
 }
 
 function findEasyApplyModal() {
@@ -214,24 +191,33 @@ function findButtonByText(text) {
 }
 
 function checkIfAlreadyApplied() {
-  // Check for "Applied" text in common locations
-  const indicators = document.querySelectorAll(
-    ".artdeco-inline-feedback, .jobs-details-top-card__apply-error, [class*='applied'], [class*='success']",
+  // Check all visible elements for "Applied" state indicators
+  const allElements = document.querySelectorAll(
+    ".artdeco-inline-feedback, [class*='applied'], [class*='success'], [class*='confirmation']",
   );
-  for (const el of indicators) {
+  for (const el of allElements) {
     const text = el.textContent.toLowerCase();
     if (
-      text.includes("applied") ||
       text.includes("application submitted") ||
-      text.includes("already applied")
+      text.includes("already applied") ||
+      text.includes("your application was sent")
     ) {
       return true;
     }
   }
 
-  // Check if apply button text changed
-  const applyBtn = document.querySelector("button.jobs-apply-button");
-  if (applyBtn && applyBtn.textContent.toLowerCase().includes("applied")) {
+  // Check if the apply button / link text changed to "Applied"
+  const applyEl = findEasyApplyButton();
+  if (applyEl && applyEl.textContent.trim().toLowerCase() === "applied") {
+    return true;
+  }
+
+  // Check page text for confirmation
+  const pageText = document.body?.innerText?.toLowerCase() || "";
+  if (
+    pageText.includes("application submitted") ||
+    pageText.includes("your application was sent")
+  ) {
     return true;
   }
 

@@ -31,8 +31,6 @@ jobs:
         working-directory: ./server
         env:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
-          JSEARCH_API_KEY: ${{ secrets.JSEARCH_API_KEY }}
-          JSEARCH_API_KEYS: ${{ secrets.JSEARCH_API_KEYS }}
           LINKEDIN_SESSION: ${{ secrets.LINKEDIN_SESSION }}
           CI: 'true'
           NODE_ENV: production

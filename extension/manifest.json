@@ -9,7 +9,9 @@
   "host_permissions": [
     "*://www.naukri.com/*",
     "*://naukri.com/*",
-    "*://www.linkedin.com/*"
+    "*://www.linkedin.com/*",
+    "*://in.linkedin.com/*",
+    "*://linkedin.com/*"
   ],
 
   "background": {
@@ -27,13 +29,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://www.naukri.com/*"],
-      "js": ["content-scripts/common.js"],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": ["*://www.linkedin.com/*"],
-      "js": ["content-scripts/common.js", "content-scripts/linkedin.js"],
+      "matches": [
+        "*://www.linkedin.com/*",
+        "*://in.linkedin.com/*",
+        "*://linkedin.com/*"
+      ],
+      "js": ["content-scripts/linkedin.js"],
       "run_at": "document_idle"
     }
   ]

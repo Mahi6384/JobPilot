@@ -1,6 +1,6 @@
 const { chromium } = require("playwright");
 const { scrapeQuery: scrapeNaukriQuery } = require("../scraper/naukriScraper");
-const { scrapeQuery: fetchLinkedinJobs } = require("../scraper/linkedinFetcher");
+const { scrapeQuery: scrapeLinkedinQuery } = require("../scraper/linkedinScraper");
 const { transformJobs, transformLinkedinJobs } = require("../scraper/transformer");
 const { filterNewJobs } = require("../scraper/deduplicator");
 const Job = require("../models/jobModel");
@@ -11,7 +11,7 @@ const logger = require("../utils/logger");
 /**
  * Run a quick on-demand scrape for a single search query.
  * Designed to be called from within the Express server (fire-and-forget).
- * Scrapes both Naukri (1 page, up to 10 jobs) and LinkedIn (via JSearch API).
+ * Scrapes Naukri and LinkedIn with Playwright (shared browser instance).
  */
 async function runOnDemandScrape(userId, searchTerm) {
   let browser;
@@ -37,29 +37,35 @@ async function runOnDemandScrape(userId, searchTerm) {
     let naukriJobs = [];
     let linkedinJobs = [];
 
-    // --- Naukri Scraping (Playwright) ---
+    // Launch a single browser for both platforms
     try {
-      browser = await chromium.launch({ headless: false });
-      const rawNaukri = await scrapeNaukriQuery(browser, searchTerm);
-      logger.info(`On-demand scrape: scraped ${rawNaukri.length} Naukri jobs for "${searchTerm}"`);
+      browser = await chromium.launch({ headless: true }); // better to be headless for onDemand
+      
+      // --- Naukri Scraping (Playwright) ---
+      try {
+        const rawNaukri = await scrapeNaukriQuery(browser, searchTerm);
+        logger.info(`On-demand scrape: scraped ${rawNaukri.length} Naukri jobs for "${searchTerm}"`);
 
-      if (rawNaukri.length > 0) {
-        naukriJobs = transformJobs(rawNaukri);
+        if (rawNaukri.length > 0) {
+          naukriJobs = transformJobs(rawNaukri);
+        }
+      } catch (err) {
+        logger.error(`On-demand Naukri scrape failed for "${searchTerm}"`, err);
+      }
+
+      // --- LinkedIn Scraping (Playwright) ---
+      try {
+        const rawLinkedin = await scrapeLinkedinQuery(browser, searchTerm);
+        logger.info(`On-demand scrape: scraped ${rawLinkedin.length} LinkedIn jobs for "${searchTerm}"`);
+
+        if (rawLinkedin.length > 0) {
+          linkedinJobs = transformLinkedinJobs(rawLinkedin);
+        }
+      } catch (err) {
+        logger.error(`On-demand LinkedIn scrape failed for "${searchTerm}"`, err);
       }
     } catch (err) {
-      logger.error(`On-demand Naukri scrape failed for "${searchTerm}"`, err);
-    }
-
-    // --- LinkedIn Fetching (JSearch API, no browser needed) ---
-    try {
-      const rawLinkedin = await fetchLinkedinJobs(searchTerm);
-      logger.info(`On-demand scrape: fetched ${rawLinkedin.length} LinkedIn jobs for "${searchTerm}"`);
-
-      if (rawLinkedin.length > 0) {
-        linkedinJobs = transformLinkedinJobs(rawLinkedin);
-      }
-    } catch (err) {
-      logger.error(`On-demand LinkedIn fetch failed for "${searchTerm}"`, err);
+      logger.error(`On-demand scraper failed to launch browser`, err);
     }
 
     // --- Merge, Dedup, Insert ---

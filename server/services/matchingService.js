@@ -88,18 +88,13 @@ async function getMatchedJobs(userId, filters = {}, page = 1, limit = 10) {
   const user = await User.findById(userId);
   if (!user) throw new Error("User not found");
 
-  const query = {
-    $or: [
-      { status: "done" },
-      { status: { $exists: false } }
-    ]
-  };
+  const query = {};
 
   if (filters.platform) {
     query.platform = { $in: Array.isArray(filters.platform) ? filters.platform : [filters.platform] };
   }
   if (filters.jobType) {
-    query.jobType = filters.jobType;
+    query.jobType = { $in: Array.isArray(filters.jobType) ? filters.jobType : [filters.jobType] };
   }
   if (filters.location) {
     query.location = { $regex: filters.location, $options: "i" };
@@ -115,6 +110,10 @@ async function getMatchedJobs(userId, filters = {}, page = 1, limit = 10) {
   }
   if (filters.salaryMax != null) {
     query.salaryMin = { $lte: Number(filters.salaryMax) };
+  }
+  // applyType filter: only relevant for LinkedIn jobs
+  if (filters.applyType) {
+    query.applyType = { $in: Array.isArray(filters.applyType) ? filters.applyType : [filters.applyType] };
   }
 
   const existingApps = await Application.find({ userId: user._id }).select("jobId");

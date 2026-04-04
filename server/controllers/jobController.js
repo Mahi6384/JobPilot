@@ -8,17 +8,21 @@ const logger = require("../utils/logger");
 const getMatchedJobsHandles = async(req, res)=>{
     try{
         const {
-            platform, jobtype, location, experienceMin, experienceMax, salaryMin, salaryMax, page = 1, limit = 10
+            platform, jobType, jobtype, applyType, location, experienceMin, experienceMax, salaryMin, salaryMax, page = 1, limit = 10
         } = req.query;
 
         const filters = {};
-        if(platform) filters.platform = platform;
-        if(jobtype) filters.jobType = jobtype;
-        if(location) filters.location = location;
-        if(experienceMin) filters.experienceMin = experienceMin;
-        if(experienceMax) filters.experienceMax = experienceMax;
-        if(salaryMin) filters.salaryMin = salaryMin;
-        if(salaryMax) filters.salaryMax = salaryMax;
+        // Support both camelCase (jobType) and lowercase (jobtype) from older clients
+        const resolvedJobType = jobType || jobtype;
+
+        if (platform) filters.platform = platform.split(",");
+        if (resolvedJobType) filters.jobType = resolvedJobType.split(",");
+        if (applyType) filters.applyType = applyType.split(",");
+        if (location) filters.location = location;
+        if (experienceMin) filters.experienceMin = experienceMin;
+        if (experienceMax) filters.experienceMax = experienceMax;
+        if (salaryMin) filters.salaryMin = salaryMin;
+        if (salaryMax) filters.salaryMax = salaryMax;
 
         const result = await getMatchedJobs(req.userId, filters, Number(page), Number(limit));
         return res.status(200).json(result);
@@ -62,12 +66,7 @@ const getJobsById = async (req, res) =>{
 const getDashboardData = async (req, res) => {
     try {
         const topJobs = await getMatchedJobs(req.userId, {}, 1, 5);
-        const totalMatches = await Job.countDocuments({
-            $or: [
-                { status: "done" },
-                { status: { $exists: false } }
-            ]
-        });
+        const totalMatches = await Job.countDocuments({});
 
         // Compute real stats from Application model
         const todayStart = new Date();

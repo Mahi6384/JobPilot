@@ -1,17 +1,5 @@
 require("dotenv").config();
 
-// Parse comma-separated JSearch API keys for rotation
-const _jsearchKeys = (
-  process.env.JSEARCH_API_KEYS ||
-  process.env.JSEARCH_API_KEY ||
-  ""
-)
-  .split(",")
-  .map((k) => k.trim())
-  .filter(Boolean);
-
-let _keyIndex = 0;
-
 module.exports = {
   searchQueries: ["Devops Engineer", "Data Scientist", "Data Analyst"],
   // Naukri settings
@@ -21,17 +9,10 @@ module.exports = {
   headless: process.env.CI === "true" || process.env.HEADLESS === "true",
   delayBetweenPages: 3000,
   jobMaxAgeDays: 30,
-  // LinkedIn / JSearch settings
+  // LinkedIn (Playwright scraper, Naukri-style link harvest + job page visits)
   linkedinMaxJobsPerQuery: 15,
-  linkedinDatePosted: "week",
-  // Round-robin through all available API keys
-  getJsearchApiKey() {
-    if (_jsearchKeys.length === 0) return "";
-    const key = _jsearchKeys[_keyIndex % _jsearchKeys.length];
-    _keyIndex++;
-    return key;
-  },
-  jsearchKeyCount: _jsearchKeys.length,
+  /** ms to wait for first `a[href*="/jobs/view/"]` on search results */
+  linkedinListLinkTimeout: 25000,
   // Scheduling
   minHoursBetweenScrapes: 18,
 };

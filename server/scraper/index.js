@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const { chromium } = require("playwright");
 const config = require("./config");
 const { scrapeQuery: scrapeNaukriQuery } = require("./naukriScraper");
-const { scrapeQuery: fetchLinkedinJobs } = require("./linkedinFetcher");
+const { scrapeQuery: scrapeLinkedinQuery } = require("./linkedinScraper");
 const { transformJobs, transformLinkedinJobs } = require("./transformer");
 const { filterNewJobs, cleanupOldJobs } = require("./deduplicator");
 const Job = require("../models/jobModel");
@@ -65,8 +65,8 @@ async function runScraper() {
       `\n📋 Queries: ${staticQueries.length} static + ${dynamicQueries.length} dynamic = ${allQueries.length} total\n`,
     );
 
-    // Launch browser only if scraping Naukri
-    if (platforms.includes("naukri")) {
+    // Launch browser if scraping Naukri or LinkedIn natively
+    if (platforms.includes("naukri") || platforms.includes("linkedin")) {
       browser = await chromium.launch({ headless: config.headless });
       console.log(`\n🌐 Browser launched (headless: ${config.headless})\n`);
     }
@@ -92,13 +92,13 @@ async function runScraper() {
         }
       }
 
-      // --- LinkedIn Fetching (JSearch API) ---
-      if (platforms.includes("linkedin")) {
+      // --- LinkedIn Scraping Phase ---
+      if (platforms.includes("linkedin") && browser) {
         try {
-          linkedinRaw = await fetchLinkedinJobs(query);
-          console.log(`   📦 LinkedIn: Fetched ${linkedinRaw.length} Easy Apply jobs`);
+          linkedinRaw = await scrapeLinkedinQuery(browser, query);
+          console.log(`   📦 LinkedIn: Scraped ${linkedinRaw.length} Easy Apply jobs`);
         } catch (err) {
-          console.log(`   ❌ LinkedIn fetch failed: ${err.message}`);
+          console.log(`   ❌ LinkedIn scrape failed: ${err.message}`);
         }
       }
 
@@ -184,15 +184,6 @@ async function runScraper() {
     console.log(`\n   📈 Total new jobs added: ${totalNewJobs}`);
     console.log(`   📊 Total Naukri jobs in DB: ${totalNaukri}`);
     console.log(`   📊 Total LinkedIn jobs in DB: ${totalLinkedin}`);
-
-    // --- Classification Worker Phase ---
-    if (platforms.includes("linkedin")) {
-      console.log(`\n${"=".repeat(60)}`);
-      console.log("🚦 RUNNING CLASSIFICATION WORKER");
-      console.log(`${"=".repeat(60)}\n`);
-      const { processLinkedInJobs } = require("../workers/linkedinClassifier");
-      await processLinkedInJobs();
-    }
 
     console.log("\n✅ Scraping completed!\n");
   } catch (error) {

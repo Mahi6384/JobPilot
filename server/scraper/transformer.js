@@ -63,7 +63,6 @@ function transformJobs(rawJobs) {
       platform: "naukri",
       applicationUrl: job.applicationUrl,
       easyApply: true,
-      status: "done",
       applyType: "easy_apply",
       postedDate: new Date(),
       scrapedAt: new Date(),
@@ -89,11 +88,10 @@ function transformLinkedinJobs(rawJobs) {
       description:
         job.description ||
         `${job.title} at ${job.company}. Experience: ${job.experience || "N/A"}. Salary: ${job.salary || "Not disclosed"}`,
-      applyType: "pending",
-      status: "new",
+      applyType: "easy_apply",
       platform: "linkedin",
       applicationUrl: job.applicationUrl,
-      easyApply: false, // Unknown from JSearch; extension checks at apply time
+      easyApply: true,
       postedDate: job.postedDate || new Date(),
       scrapedAt: new Date(),
     };

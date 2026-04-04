@@ -1,5 +1,8 @@
 const config = require("./config");
 const fs = require("fs");
+const path = require("path");
+
+const SESSION_PATH = path.join(__dirname, "naukri-session.json");
 
 function buildSearchUrl(query, page = 1) {
   const slug = query.toLowerCase().replace(/\s+/g, "-");
@@ -106,9 +109,8 @@ async function scrapeJobPage(page, jobUrl) {
 }
 
 async function scrapeQuery(browser, query) {
-  const sessionPath = "./scraper/naukri-session.json";
-  const contextOptions = fs.existsSync(sessionPath)
-    ? { storageState: sessionPath }
+  const contextOptions = fs.existsSync(SESSION_PATH)
+    ? { storageState: SESSION_PATH }
     : {};
 
   const context = await browser.newContext(contextOptions);
@@ -119,7 +121,6 @@ async function scrapeQuery(browser, query) {
     for (let pageNum = 1; pageNum <= config.maxPagesPerQuery; pageNum++) {
       try {
         const searchUrl = buildSearchUrl(query, pageNum);
-        console.log(`\n   🔍 Page ${pageNum}: ${searchUrl.substring(0, 80)}...`);
 
         await page.goto(searchUrl, {
           waitUntil: "domcontentloaded",
@@ -128,32 +129,38 @@ async function scrapeQuery(browser, query) {
         await page.waitForTimeout(config.delayBetweenPages);
 
         const jobLinks = await collectJobLinks(page);
-        console.log(`   📦 Found ${jobLinks.length} job links`);
 
         if (jobLinks.length === 0) {
-          console.log("   ⚠️  No results, moving to next query");
+          console.log(`   Naukri page ${pageNum}: no job links`);
           break;
         }
+
+        let addedThisPage = 0;
+        let skipped = 0;
 
         for (let i = 0; i < jobLinks.length; i++) {
           const jobInfo = await scrapeJobPage(page, jobLinks[i]);
 
           if (jobInfo) {
-            console.log(
-              `   ✅ [${i + 1}/${jobLinks.length}] ${jobInfo.title} at ${jobInfo.company}`,
-            );
+            addedThisPage++;
             allJobs.push({ ...jobInfo, applicationUrl: jobLinks[i] });
           } else {
-            console.log(`   ❌ [${i + 1}/${jobLinks.length}] Skipped`);
+            skipped++;
           }
 
           await page.waitForTimeout(1500);
 
           if (allJobs.length >= config.maxJobsPerQuery) {
-            console.log(`   🎯 Reached the target of ${config.maxJobsPerQuery} jobs. Stopping query.`);
+            console.log(
+              `   Naukri: reached ${config.maxJobsPerQuery} direct-apply jobs for this query`,
+            );
             break;
           }
         }
+
+        console.log(
+          `   Naukri page ${pageNum}: +${addedThisPage} saved, ${skipped} skipped of ${jobLinks.length} links`,
+        );
 
         if (allJobs.length >= config.maxJobsPerQuery) {
           break; // Break the outer page loop if we hit our target
@@ -174,4 +181,4 @@ async function scrapeQuery(browser, query) {
   return allJobs;
 }
 
-module.exports = { scrapeQuery, buildSearchUrl };
+module.exports = { scrapeQuery };

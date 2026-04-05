@@ -5,27 +5,24 @@ const {
   getOnboardingStatus,
   saveStep,
   getProfile,
+  getResumeData,
   updateProfile,
+  parseResume,
 } = require("../controllers/onboardingController");
 
 const multer = require("multer");
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB limit
-// All routes require authentication
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
+
 router.use(authenticate);
 
-// Parse resume endpoint
-router.post("/parse-resume", upload.single("resume"), require("../controllers/onboardingController").parseResume);
-
-// Get onboarding status and current step
+router.post("/parse-resume", upload.single("resume"), parseResume);
 router.get("/status", getOnboardingStatus);
-
-// Save data for a specific step (1-4)
 router.put("/step/:stepNumber", saveStep);
-
-// Get full user profile
 router.get("/profile", getProfile);
-
-// Update full profile
+router.get("/resume-data", getResumeData);
 router.put("/profile", updateProfile);
 
 module.exports = router;

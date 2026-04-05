@@ -2,59 +2,137 @@ const User = require("../models/userModel");
 const Job = require("../models/jobModel");
 const ScrapeQuery = require("../models/scrapeQueryModel");
 const { runOnDemandScrape } = require("../services/onDemandScraper");
+const { extractStructuredResume } = require("../utils/resumeParser");
 const logger = require("../utils/logger");
 const pdf = require("pdf-parse");
 
-const COMMON_SKILLS = [
-  "javascript", "python", "java", "c++", "c#", "ruby", "php", "typescript", "swift", "kotlin", "go", "rust",
-  "html", "css", "react", "angular", "vue", "node.js", "express", "django", "flask", "spring", "asp.net",
-  "sql", "mysql", "postgresql", "mongodb", "redis", "elasticsearch", "aws", "azure", "gcp", "docker", 
-  "kubernetes", "git", "linux", "unix", "agile", "scrum", "machine learning", "data science", "nlp"
-];
+// ── Validation Helpers ───────────────────────────────────────────────────────
 
-// Get onboarding status and current step data
+const STEP_RULES = {
+  1: {
+    required: ["fullName", "phone", "location"],
+    labels: {
+      fullName: "Full name",
+      phone: "Phone",
+      location: "Location",
+    },
+  },
+  2: {
+    required: ["currentJobTitle", "currentCompany"],
+    requiredNumeric: ["currentLPA", "yearsOfExperience"],
+    labels: {
+      currentJobTitle: "Current job title",
+      currentCompany: "Current company",
+      currentLPA: "Current LPA",
+      yearsOfExperience: "Years of experience",
+    },
+  },
+  3: {
+    required: ["targetJobTitle", "jobType"],
+    requiredNumeric: ["expectedLPA"],
+    requiredArray: ["preferredLocations"],
+    labels: {
+      targetJobTitle: "Target job title",
+      expectedLPA: "Expected LPA",
+      preferredLocations: "At least one preferred location",
+      jobType: "Job type",
+    },
+  },
+  4: {
+    requiredArray: ["skills"],
+    labels: {
+      skills: "At least one skill",
+    },
+  },
+};
+
+/**
+ * Validates data against step rules. Returns array of error messages (empty = valid).
+ */
+function validateStepData(data, stepNumber) {
+  const rules = STEP_RULES[stepNumber];
+  if (!rules) return [`Invalid step number: ${stepNumber}`];
+
+  const errors = [];
+
+  (rules.required || []).forEach((field) => {
+    if (!data[field]?.toString().trim()) {
+      errors.push(`${rules.labels[field] || field} is required`);
+    }
+  });
+
+  (rules.requiredNumeric || []).forEach((field) => {
+    if (data[field] === undefined || data[field] === null) {
+      errors.push(`${rules.labels[field] || field} is required`);
+    }
+  });
+
+  (rules.requiredArray || []).forEach((field) => {
+    if (!data[field] || data[field].length === 0) {
+      errors.push(`${rules.labels[field] || field} is required`);
+    }
+  });
+
+  return errors;
+}
+
+/**
+ * Validates a full profile update (all fields at once).
+ */
+function validateProfileData(data) {
+  const errors = [];
+  for (let step = 1; step <= 4; step++) {
+    errors.push(...validateStepData(data, step));
+  }
+  return errors;
+}
+
+// ── Step field mapping ───────────────────────────────────────────────────────
+
+const STEP_FIELDS = {
+  1: ["fullName", "phone", "location"],
+  2: ["currentJobTitle", "currentCompany", "currentLPA", "yearsOfExperience"],
+  3: ["targetJobTitle", "expectedLPA", "preferredLocations", "jobType"],
+  4: ["skills", "resumeUrl", "linkedinUrl"],
+};
+
+function pickStepFields(data, step) {
+  const fields = {};
+  STEP_FIELDS[step].forEach((key) => {
+    if (data[key] !== undefined) fields[key] = data[key];
+  });
+  if (step === 4) {
+    fields.onboardingStatus = "completed";
+  }
+  return fields;
+}
+
+// ── Controllers ──────────────────────────────────────────────────────────────
+
 const getOnboardingStatus = async (req, res) => {
   try {
     const user = await User.findById(req.userId).select("-passwordHash");
-
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    // Determine current step based on filled data
-    let currentStep = 1;
-    if (user.fullName && user.phone && user.location) {
-      currentStep = 2;
-    }
-    if (user.currentJobTitle && user.currentCompany && user.currentLPA !== undefined && user.yearsOfExperience !== undefined) {
-      currentStep = 3;
-    }
-    if (user.targetJobTitle && user.expectedLPA !== undefined && user.preferredLocations?.length > 0 && user.jobType) {
-      currentStep = 4;
-    }
-    if (user.skills?.length > 0) {
-      currentStep = 5; // Completed
-    }
+    const currentStep = computeCurrentStep(user);
 
     res.status(200).json({
       onboardingStatus: user.onboardingStatus,
       currentStep,
       profile: {
-        // Step 1
         fullName: user.fullName,
         phone: user.phone,
         location: user.location,
-        // Step 2
         currentJobTitle: user.currentJobTitle,
         currentCompany: user.currentCompany,
         currentLPA: user.currentLPA,
         yearsOfExperience: user.yearsOfExperience,
-        // Step 3
         targetJobTitle: user.targetJobTitle,
         expectedLPA: user.expectedLPA,
         preferredLocations: user.preferredLocations,
         jobType: user.jobType,
-        // Step 4
         skills: user.skills,
         resumeUrl: user.resumeUrl,
         linkedinUrl: user.linkedinUrl,
@@ -62,100 +140,23 @@ const getOnboardingStatus = async (req, res) => {
     });
   } catch (error) {
     logger.error("Get onboarding status error", error);
-    res.status(500).json({ message: "Failed to get onboarding status" });
+    res.status(500).json({ success: false, message: "Failed to get onboarding status" });
   }
 };
 
-// Save data for a specific step
 const saveStep = async (req, res) => {
   try {
-    const { stepNumber } = req.params;
-    const stepData = req.body;
-    const step = parseInt(stepNumber);
-
+    const step = parseInt(req.params.stepNumber);
     if (step < 1 || step > 4) {
-      return res.status(400).json({ message: "Invalid step number" });
+      return res.status(400).json({ success: false, message: "Invalid step number" });
     }
 
-    let updateFields = {};
-    let validationErrors = [];
-
-    switch (step) {
-      case 1:
-        // Basic Info
-        if (!stepData.fullName) validationErrors.push("Full name is required");
-        if (!stepData.phone) validationErrors.push("Phone is required");
-        if (!stepData.location) validationErrors.push("Location is required");
-
-        if (validationErrors.length > 0) {
-          return res.status(400).json({ message: validationErrors.join(", ") });
-        }
-
-        updateFields = {
-          fullName: stepData.fullName,
-          phone: stepData.phone,
-          location: stepData.location,
-        };
-        break;
-
-      case 2:
-        // Current Position
-        if (!stepData.currentJobTitle) validationErrors.push("Current job title is required");
-        if (!stepData.currentCompany) validationErrors.push("Current company is required");
-        if (stepData.currentLPA === undefined) validationErrors.push("Current LPA is required");
-        if (stepData.yearsOfExperience === undefined) validationErrors.push("Years of experience is required");
-
-        if (validationErrors.length > 0) {
-          return res.status(400).json({ message: validationErrors.join(", ") });
-        }
-
-        updateFields = {
-          currentJobTitle: stepData.currentJobTitle,
-          currentCompany: stepData.currentCompany,
-          currentLPA: stepData.currentLPA,
-          yearsOfExperience: stepData.yearsOfExperience,
-        };
-        break;
-
-      case 3:
-        // Job Preferences
-        if (!stepData.targetJobTitle) validationErrors.push("Target job title is required");
-        if (stepData.expectedLPA === undefined) validationErrors.push("Expected LPA is required");
-        if (!stepData.preferredLocations || stepData.preferredLocations.length === 0) {
-          validationErrors.push("At least one preferred location is required");
-        }
-        if (!stepData.jobType) validationErrors.push("Job type is required");
-
-        if (validationErrors.length > 0) {
-          return res.status(400).json({ message: validationErrors.join(", ") });
-        }
-
-        updateFields = {
-          targetJobTitle: stepData.targetJobTitle,
-          expectedLPA: stepData.expectedLPA,
-          preferredLocations: stepData.preferredLocations,
-          jobType: stepData.jobType,
-        };
-        break;
-
-      case 4:
-        // Skills & Resume (skills required, resume and linkedin optional)
-        if (!stepData.skills || stepData.skills.length === 0) {
-          validationErrors.push("At least one skill is required");
-        }
-
-        if (validationErrors.length > 0) {
-          return res.status(400).json({ message: validationErrors.join(", ") });
-        }
-
-        updateFields = {
-          skills: stepData.skills,
-          resumeUrl: stepData.resumeUrl || undefined,
-          linkedinUrl: stepData.linkedinUrl || undefined,
-          onboardingStatus: "completed", // Mark as completed on final step
-        };
-        break;
+    const errors = validateStepData(req.body, step);
+    if (errors.length > 0) {
+      return res.status(400).json({ success: false, message: errors.join(", ") });
     }
+
+    const updateFields = pickStepFields(req.body, step);
 
     const user = await User.findByIdAndUpdate(
       req.userId,
@@ -165,41 +166,13 @@ const saveStep = async (req, res) => {
 
     logger.info(`User ${req.userId} completed onboarding step ${step}`);
 
-    // After final step: trigger on-demand scraping if needed
+    // On final step, trigger scraping if needed
     if (step === 4 && user.targetJobTitle) {
-      // ALWAYS save query for future scheduled scrapes
-      await ScrapeQuery.findOneAndUpdate(
-        { query: user.targetJobTitle.toLowerCase().trim() },
-        {
-          query: user.targetJobTitle.toLowerCase().trim(),
-          addedBy: user._id,
-          source: "onboarding",
-          lastScrapedAt: new Date(0), // Set to epoch so the daily scraper prioritizes it immediately
-        },
-        { upsert: true, new: true }
-      );
-
-      // Escape regex chars to prevent crashes with titles like "C++ Developer"
-      const escapedTitle = user.targetJobTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      
-      const matchingJobCount = await Job.countDocuments({
-        title: { $regex: escapedTitle, $options: "i" },
-      });
-
-      if (matchingJobCount < 50) {
-        logger.info(`Few matching jobs (${matchingJobCount} < 50) for "${user.targetJobTitle}", triggering on-demand scrape`);
-        // Fire-and-forget: don't await, let it run in background
-        runOnDemandScrape(user._id, user.targetJobTitle).catch((err) =>
-          logger.error("On-demand scrape background error", err)
-        );
-      } else {
-        // Enough jobs exist, mark as ready immediately
-        logger.info(`Sufficient jobs (${matchingJobCount} >= 20) already exist for "${user.targetJobTitle}", skipping mini-scraper.`);
-        await User.findByIdAndUpdate(user._id, { jobSearchStatus: "ready" });
-      }
+      await triggerScrapeIfNeeded(user);
     }
 
     res.status(200).json({
+      success: true,
       message: `Step ${step} saved successfully`,
       user: {
         id: user._id,
@@ -210,84 +183,82 @@ const saveStep = async (req, res) => {
     });
   } catch (error) {
     logger.error("Save step error", error);
-    res.status(500).json({ message: "Failed to save step data" });
+    res.status(500).json({ success: false, message: "Failed to save step data" });
   }
 };
 
-// Get full user profile
 const getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.userId).select("-passwordHash");
-
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
-
-    res.status(200).json({ profile: user });
+    res.status(200).json({ success: true, profile: user });
   } catch (error) {
     logger.error("Get profile error", error);
-    res.status(500).json({ message: "Failed to get profile" });
+    res.status(500).json({ success: false, message: "Failed to get profile" });
   }
 };
 
-// Update full profile (for profile edit page)
+const getResumeData = async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select("-passwordHash");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        name: user.fullName || null,
+        email: user.email || null,
+        phone: user.phone || null,
+        skills: user.skills || [],
+        experience: {
+          years: user.yearsOfExperience || 0,
+          currentTitle: user.currentJobTitle || null,
+          currentCompany: user.currentCompany || null,
+        },
+        education: [],
+        expectedSalary: user.expectedLPA ? String(user.expectedLPA) : null,
+        currentCtc: user.currentLPA ? String(user.currentLPA) : null,
+        location: user.location || null,
+        linkedinUrl: user.linkedinUrl || null,
+        resumeUrl: user.resumeUrl || null,
+      },
+    });
+  } catch (error) {
+    logger.error("Get resume data error", error);
+    res.status(500).json({ success: false, message: "Failed to get resume data" });
+  }
+};
+
 const updateProfile = async (req, res) => {
   try {
-    const profileData = req.body;
-    let validationErrors = [];
-
-    // Validate Step 1: Basic Info
-    if (!profileData.fullName?.trim()) validationErrors.push("Full name is required");
-    if (!profileData.phone?.trim()) validationErrors.push("Phone is required");
-    if (!profileData.location?.trim()) validationErrors.push("Location is required");
-
-    // Validate Step 2: Current Position
-    if (!profileData.currentJobTitle?.trim()) validationErrors.push("Current job title is required");
-    if (!profileData.currentCompany?.trim()) validationErrors.push("Current company is required");
-    if (profileData.currentLPA === undefined || profileData.currentLPA === null) {
-      validationErrors.push("Current LPA is required");
-    }
-    if (profileData.yearsOfExperience === undefined || profileData.yearsOfExperience === null) {
-      validationErrors.push("Years of experience is required");
-    }
-
-    // Validate Step 3: Job Preferences
-    if (!profileData.targetJobTitle?.trim()) validationErrors.push("Target job title is required");
-    if (profileData.expectedLPA === undefined || profileData.expectedLPA === null) {
-      validationErrors.push("Expected LPA is required");
-    }
-    if (!profileData.preferredLocations || profileData.preferredLocations.length === 0) {
-      validationErrors.push("At least one preferred location is required");
-    }
-    if (!profileData.jobType) validationErrors.push("Job type is required");
-
-    // Validate Step 4: Skills
-    if (!profileData.skills || profileData.skills.length === 0) {
-      validationErrors.push("At least one skill is required");
-    }
-
-    if (validationErrors.length > 0) {
-      return res.status(400).json({ 
-        message: "Validation failed", 
-        errors: validationErrors 
+    const errors = validateProfileData(req.body);
+    if (errors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors,
       });
     }
 
     const updateFields = {
-      fullName: profileData.fullName,
-      phone: profileData.phone,
-      location: profileData.location,
-      currentJobTitle: profileData.currentJobTitle,
-      currentCompany: profileData.currentCompany,
-      currentLPA: profileData.currentLPA,
-      yearsOfExperience: profileData.yearsOfExperience,
-      targetJobTitle: profileData.targetJobTitle,
-      expectedLPA: profileData.expectedLPA,
-      preferredLocations: profileData.preferredLocations,
-      jobType: profileData.jobType,
-      skills: profileData.skills,
-      resumeUrl: profileData.resumeUrl || undefined,
-      linkedinUrl: profileData.linkedinUrl || undefined,
+      fullName: req.body.fullName,
+      phone: req.body.phone,
+      location: req.body.location,
+      currentJobTitle: req.body.currentJobTitle,
+      currentCompany: req.body.currentCompany,
+      currentLPA: req.body.currentLPA,
+      yearsOfExperience: req.body.yearsOfExperience,
+      targetJobTitle: req.body.targetJobTitle,
+      expectedLPA: req.body.expectedLPA,
+      preferredLocations: req.body.preferredLocations,
+      jobType: req.body.jobType,
+      skills: req.body.skills,
+      resumeUrl: req.body.resumeUrl || undefined,
+      linkedinUrl: req.body.linkedinUrl || undefined,
     };
 
     const user = await User.findByIdAndUpdate(
@@ -299,79 +270,93 @@ const updateProfile = async (req, res) => {
     logger.info(`User ${req.userId} updated their profile`);
 
     res.status(200).json({
+      success: true,
       message: "Profile updated successfully",
       profile: user,
     });
   } catch (error) {
     logger.error("Update profile error", error);
-    res.status(500).json({ message: "Failed to update profile" });
+    res.status(500).json({ success: false, message: "Failed to update profile" });
   }
 };
 
-// Parse Resume
 const parseResume = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: "No resume file uploaded" });
+      return res.status(400).json({ success: false, message: "No resume file uploaded" });
     }
-    
-    // Parse the PDF
-    const data = await pdf(req.file.buffer);
-    const text = data.text.toLowerCase();
-    
-    // Non-AI Extractor
-    const extractedSkills = new Set();
-    COMMON_SKILLS.forEach(skill => {
-      // Escape specical chars
-      const escapedSkill = skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      
-      // If skill ends with a word character (like a, b, 1), we can use \b. 
-      // If it ends with a non-word char (like + or #), \b will fail if followed by space.
-      // E.g., 'c++' -> ends with '+'. We should use (?!\w) or (?=[^a-zA-Z0-9_]|$) instead.
-      const startBoundary = /^\w/.test(skill) ? '\\b' : '';
-      const endBoundary = /\w$/.test(skill) ? '\\b' : '(?![a-zA-Z0-9_])';
 
-      const regex = new RegExp(`${startBoundary}${escapedSkill}${endBoundary}`, "i");
-      if (regex.test(text)) {
-        // Find proper casing
-        const originalIndex = COMMON_SKILLS.indexOf(skill);
-        extractedSkills.add(COMMON_SKILLS[originalIndex]); // Using original array order as our list. We can improve casing later.
-      }
-    });
-    
-    // Better casing mapping (simplistic)
-    const formattedSkills = Array.from(extractedSkills).map(s => {
-      if (s === "javascript") return "JavaScript";
-      if (s === "typescript") return "TypeScript";
-      if (s === "java") return "Java";
-      if (s === "python") return "Python";
-      if (s === "react") return "React";
-      if (s === "node.js") return "Node.js";
-      if (s === "html") return "HTML";
-      if (s === "css") return "CSS";
-      if (s === "sql") return "SQL";
-      if (s === "aws") return "AWS";
-      if (s === "docker") return "Docker";
-      return s.charAt(0).toUpperCase() + s.slice(1);
-    });
+    const data = await pdf(req.file.buffer);
+    const structured = extractStructuredResume(data.text);
 
     res.status(200).json({
       success: true,
-      skills: formattedSkills,
-      // Minimal simulated parsing
-      yearsOfExperience: text.match(/\b([1-9][0-9]?)\s*(?:\+)?\s*years/i)?.[1] || "0",
+      skills: structured.skills,
+      yearsOfExperience: String(structured.experience.years),
+      structured,
     });
-
   } catch (error) {
     logger.error("Resume parsing error", error);
-    res.status(500).json({ message: "Failed to parse resume", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Failed to parse resume",
+      error: error.message,
+    });
   }
 };
+
+// ── Internal Helpers ─────────────────────────────────────────────────────────
+
+function computeCurrentStep(user) {
+  let step = 1;
+  if (user.fullName && user.phone && user.location) step = 2;
+  if (user.currentJobTitle && user.currentCompany &&
+      user.currentLPA !== undefined && user.yearsOfExperience !== undefined) step = 3;
+  if (user.targetJobTitle && user.expectedLPA !== undefined &&
+      user.preferredLocations?.length > 0 && user.jobType) step = 4;
+  if (user.skills?.length > 0) step = 5;
+  return step;
+}
+
+async function triggerScrapeIfNeeded(user) {
+  await ScrapeQuery.findOneAndUpdate(
+    { query: user.targetJobTitle.toLowerCase().trim() },
+    {
+      query: user.targetJobTitle.toLowerCase().trim(),
+      addedBy: user._id,
+      source: "onboarding",
+      lastScrapedAt: new Date(0),
+    },
+    { upsert: true, new: true }
+  );
+
+  const escapedTitle = user.targetJobTitle.replace(
+    /[.*+?^${}()|[\]\\]/g, "\\$&"
+  );
+  const matchingJobCount = await Job.countDocuments({
+    title: { $regex: escapedTitle, $options: "i" },
+  });
+
+  if (matchingJobCount < 50) {
+    logger.info(
+      `Few matching jobs (${matchingJobCount}) for "${user.targetJobTitle}", triggering on-demand scrape`
+    );
+    runOnDemandScrape(user._id, user.targetJobTitle).catch((err) =>
+      logger.error("On-demand scrape background error", err)
+    );
+  } else {
+    logger.info(
+      `Sufficient jobs (${matchingJobCount}) for "${user.targetJobTitle}", skipping scrape`
+    );
+    await User.findByIdAndUpdate(user._id, { jobSearchStatus: "ready" });
+  }
+}
 
 module.exports = {
   getOnboardingStatus,
   saveStep,
   getProfile,
+  getResumeData,
   updateProfile,
   parseResume,
 };

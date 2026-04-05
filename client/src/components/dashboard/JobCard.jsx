@@ -1,5 +1,5 @@
 import React from "react";
-import { MapPin, Briefcase, Zap, ExternalLink } from "lucide-react";
+import { MapPin, Briefcase, Zap } from "lucide-react";
 
 function JobCard({ job, onClick, showCheckbox = false, isSelected = false, onToggleSelect }) {
   const platformColors = {
@@ -24,13 +24,6 @@ function JobCard({ job, onClick, showCheckbox = false, isSelected = false, onTog
           <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-600/20 text-green-400 text-xs rounded border border-green-600/30">
             <Zap className="w-3 h-3" />
             Easy Apply
-          </span>
-        );
-      case "company_site":
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-600/20 text-orange-400 text-xs rounded border border-orange-600/30">
-            <ExternalLink className="w-3 h-3" />
-            Company Site
           </span>
         );
       default:

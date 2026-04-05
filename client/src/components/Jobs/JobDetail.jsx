@@ -27,18 +27,6 @@ function JobDetail({ job, onClose }) {
             </div>
           </div>
         );
-      case "company_site":
-        return (
-          <div className="flex items-start gap-3 p-3 bg-orange-600/10 border border-orange-600/20 rounded-lg">
-            <ExternalLink className="w-5 h-5 text-orange-400 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-orange-400 font-medium text-sm">Company Site Application</p>
-              <p className="text-gray-400 text-xs mt-1">
-                This job redirects to the company website — you'll need to apply manually.
-              </p>
-            </div>
-          </div>
-        );
       default:
         return (
           <div className="flex items-start gap-3 p-3 bg-gray-600/10 border border-gray-600/20 rounded-lg">

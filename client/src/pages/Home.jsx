@@ -5,6 +5,7 @@ import api from "../utils/api";
 import StatsCard from "../components/dashboard/StatsCard";
 import JobCard from "../components/dashboard/JobCard";
 import ExtensionStatus from "../components/dashboard/ExtensionStatus";
+
 function Home() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -37,14 +38,14 @@ function Home() {
     return (
       <div className="min-h-screen bg-gray-950 p-8">
         <div className="max-w-7xl mx-auto">
-          <div className="h-8 w-64 bg-gray-800 rounded animate-pulse mb-4"></div>
-          <div className="h-4 w-96 bg-gray-800 rounded animate-pulse mb-8"></div>
+          <div className="h-8 w-64 bg-gray-800 rounded animate-pulse mb-4" />
+          <div className="h-4 w-96 bg-gray-800 rounded animate-pulse mb-8" />
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
             {[1, 2, 3, 4].map((i) => (
               <div
                 key={i}
                 className="h-32 bg-gray-800 rounded-2xl animate-pulse"
-              ></div>
+              />
             ))}
           </div>
         </div>
@@ -55,7 +56,6 @@ function Home() {
   return (
     <div className="min-h-screen bg-gray-950 p-8">
       <div className="max-w-7xl mx-auto">
-        {/* Welcome Section */}
         <div className="mb-8">
           <h3 className="text-3xl font-bold text-white mb-2">
             Welcome {user?.fullName ? user.fullName.split(" ")[0] : "User"}!
@@ -65,7 +65,6 @@ function Home() {
           </p>
         </div>
 
-        {/* Stats Row */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
           <StatsCard
             icon={Briefcase}
@@ -90,7 +89,6 @@ function Home() {
           </div>
         </div>
 
-        {/* Top Matched Jobs */}
         <div className="mb-8">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-white">Top Matched Jobs</h2>
@@ -113,31 +111,22 @@ function Home() {
               ))
             ) : jobSearchStatus === "searching" ? (
               <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-12 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-600/20 flex items-center justify-center animate-pulse">
-                  {/* <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg> */}
-                </div>
-                {/* <p className="text-white font-medium mb-1">
-                  Our AI is analyzing your profile to find perfect matches...
-                </p> */}
                 <p className="text-gray-500 text-sm">
-                  Our AI is analyzing your profile to find perfect job matches.
-                  This usually takes about a minute, hang tight!
+                  Analyzing your profile to find perfect job matches. This
+                  usually takes about a minute — hang tight!
                 </p>
               </div>
             ) : (
               <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-12 text-center">
                 <p className="text-gray-400">
-                  We are currently looking for the best jobs matching your
-                  profile. Please check back later!
+                  Looking for the best jobs matching your profile. Check back
+                  later!
                 </p>
               </div>
             )}
           </div>
         </div>
 
-        {/* Quick Actions */}
         <div className="flex gap-4">
           <button
             onClick={() => navigate("/jobs")}

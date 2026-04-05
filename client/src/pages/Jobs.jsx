@@ -1,22 +1,27 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../utils/api";
+import { triggerApply, isExtensionConnected } from "../utils/extensionBridge";
 import JobFilters from "../components/Jobs/JobFilters";
 import JobList from "../components/Jobs/JobList";
 import JobDetail from "../components/Jobs/JobDetail";
 import ApplyBar from "../components/Jobs/ApplyBar";
 
 function Jobs() {
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState([]);
   const [filters, setFilters] = useState({});
   const [filterOptions, setFilterOptions] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [detailJob, setDetailJob] = useState(null);
+
   const [pagination, setPagination] = useState({
     page: 1,
     totalPages: 1,
     total: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [applyStatus, setApplyStatus] = useState(null);
 
   useEffect(() => {
     fetchFilterOptions();
@@ -74,38 +79,40 @@ function Jobs() {
     try {
       const jobIds = [...selectedIds];
       const response = await api.post("/api/applications/batch", { jobIds });
+      const queued = response.data?.data?.queued || jobIds.length;
+
       setSelectedIds(new Set());
-      const EXTENSION_ID = "emjjjomjhdlnbdlggkdchagheghfeenk";
-      if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
-        chrome.runtime.sendMessage(
-          EXTENSION_ID,
-          { action: "startApplying" },
-          (response) => {
-            if (response?.status === "started") {
-              alert(
-                `✅ ${jobIds.length} jobs queued and auto-applying started!`,
-              );
-            } else {
-              alert(
-                `✅ ${jobIds.length} jobs queued! Open the extension to start applying.`,
-              );
-            }
-          },
-        );
+
+      if (isExtensionConnected()) {
+        triggerApply();
+        setApplyStatus({
+          type: "success",
+          message: `${queued} job(s) queued — extension is auto-applying`,
+        });
       } else {
-        alert(
-          `✅ ${jobIds.length} jobs queued! Open the extension to start applying.`,
-        );
+        setApplyStatus({
+          type: "info",
+          message: `${queued} job(s) queued — open the JobPilot extension to start applying`,
+        });
       }
+
+      setTimeout(() => setApplyStatus(null), 6000);
     } catch (error) {
       const message = error.response?.data?.message || "Failed to queue jobs";
-      alert(`❌ ${message}`);
+      setApplyStatus({ type: "error", message });
+      setTimeout(() => setApplyStatus(null), 6000);
     }
   };
 
   const handleClearFilters = () => {
     setFilters({});
     setPagination({ ...pagination, page: 1 });
+  };
+
+  const statusColors = {
+    success: "bg-green-900/50 border-green-700 text-green-300",
+    info: "bg-blue-900/50 border-blue-700 text-blue-300",
+    error: "bg-red-900/50 border-red-700 text-red-300",
   };
 
   return (
@@ -115,8 +122,23 @@ function Jobs() {
           Find Your Next Opportunity
         </h1>
 
+        {applyStatus && (
+          <div
+            className={`mb-6 px-4 py-3 rounded-lg border text-sm font-medium ${statusColors[applyStatus.type]}`}
+          >
+            {applyStatus.message}
+            {applyStatus.type === "success" && (
+              <button
+                onClick={() => navigate("/applications")}
+                className="ml-3 underline text-green-200 hover:text-white"
+              >
+                View Applications →
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="flex gap-8">
-          {/* Filters Sidebar */}
           <div className="w-72 flex-shrink-0">
             <JobFilters
               filters={filters}
@@ -126,7 +148,6 @@ function Jobs() {
             />
           </div>
 
-          {/* Job List */}
           <div className="flex-1">
             <div className="mb-4 text-gray-400 text-sm">
               We found {pagination.total} open positions matching your profile
@@ -140,7 +161,6 @@ function Jobs() {
               loading={loading}
             />
 
-            {/* Pagination */}
             {pagination.totalPages > 1 && (
               <div className="flex justify-center gap-2 mt-8">
                 <button
@@ -170,12 +190,10 @@ function Jobs() {
         </div>
       </div>
 
-      {/* Job Detail Modal */}
       {detailJob && (
         <JobDetail job={detailJob} onClose={() => setDetailJob(null)} />
       )}
 
-      {/* Apply Bar */}
       <ApplyBar
         selectedCount={selectedIds.size}
         onApply={handleApply}
@@ -184,4 +202,5 @@ function Jobs() {
     </div>
   );
 }
+
 export default Jobs;

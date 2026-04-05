@@ -1,5 +1,4 @@
 import React from "react";
-import { X } from "lucide-react";
 
 function JobFilters({ filters, onChange, filterOptions, onClear }) {
   const handleCheckbox = (field, value) => {
@@ -103,28 +102,6 @@ function JobFilters({ filters, onChange, filterOptions, onClear }) {
           onChange={(e) => onChange({ ...filters, location: e.target.value })}
           className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:border-blue-500"
         />
-      </div>
-
-      {/* Apply Type (LinkedIn-specific) */}
-      <div>
-        <label className="text-sm font-medium text-gray-300 mb-3 block">
-          Apply Type
-          <span className="ml-1 text-xs text-gray-500">(LinkedIn)</span>
-        </label>
-        {[
-          { value: "easy_apply", label: "⚡ Easy Apply" },
-          { value: "company_site", label: "🔗 Company Site" },
-        ].map(({ value, label }) => (
-          <label key={value} className="flex items-center gap-2 mb-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={filters.applyType?.includes(value) || false}
-              onChange={() => handleCheckbox("applyType", value)}
-              className="w-4 h-4 rounded border-gray-600 text-blue-600 focus:ring-blue-500"
-            />
-            <span className="text-sm text-gray-300">{label}</span>
-          </label>
-        ))}
       </div>
     </div>
   );

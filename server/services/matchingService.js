@@ -12,24 +12,35 @@ function calculateMatchScore(user, job) {
     if (jobTitle.includes(targetTitle) || targetTitle.includes(jobTitle)) {
       score += 40; // High match
     } else {
-      const targetWords = targetTitle.split(/\s+/).map(w => w.replace(/[^a-z0-9]/g, '')).filter(w => w.length > 2);
-      const jobWords = jobTitle.split(/\s+/).map(w => w.replace(/[^a-z0-9]/g, '')).filter(w => w.length > 2);
-      
+      const targetWords = targetTitle
+        .split(/\s+/)
+        .map((w) => w.replace(/[^a-z0-9]/g, ""))
+        .filter((w) => w.length > 2);
+      const jobWords = jobTitle
+        .split(/\s+/)
+        .map((w) => w.replace(/[^a-z0-9]/g, ""))
+        .filter((w) => w.length > 2);
+
       let commonWords = 0;
-      targetWords.forEach(w => {
+      targetWords.forEach((w) => {
         if (jobWords.includes(w)) commonWords++;
       });
-      
+
       if (commonWords > 0) {
         score += Math.min(30, commonWords * 15);
       } else {
         // Hard filter: if title has zero word overlap, it's highly irrelevant.
-        return 0; 
+        return 0;
       }
     }
   }
 
-  if (user.skills && user.skills.length > 0 && job.skills && job.skills.length > 0) {
+  if (
+    user.skills &&
+    user.skills.length > 0 &&
+    job.skills &&
+    job.skills.length > 0
+  ) {
     const userSkills = user.skills.map((s) => s.toLowerCase().trim());
     const jobSkills = job.skills.map((s) => s.toLowerCase().trim());
     const overlap = jobSkills.filter((s) => userSkills.includes(s)).length;
@@ -37,8 +48,14 @@ function calculateMatchScore(user, job) {
     score += Math.round(ratio * 40);
   }
 
-  if (user.preferredLocations && user.preferredLocations.length > 0 && job.location) {
-    const preferred = user.preferredLocations.map((l) => l.toLowerCase().trim());
+  if (
+    user.preferredLocations &&
+    user.preferredLocations.length > 0 &&
+    job.location
+  ) {
+    const preferred = user.preferredLocations.map((l) =>
+      l.toLowerCase().trim(),
+    );
     const jobLoc = job.location.toLowerCase().trim();
     if (preferred.includes(jobLoc)) {
       score += 20;
@@ -58,7 +75,10 @@ function calculateMatchScore(user, job) {
   }
 
   if (user.expectedLPA != null && job.salaryMax > 0) {
-    if (user.expectedLPA >= job.salaryMin && user.expectedLPA <= job.salaryMax) {
+    if (
+      user.expectedLPA >= job.salaryMin &&
+      user.expectedLPA <= job.salaryMax
+    ) {
       score += 10;
     } else if (user.expectedLPA <= job.salaryMax * 1.2) {
       score += 5;
@@ -91,10 +111,16 @@ async function getMatchedJobs(userId, filters = {}, page = 1, limit = 10) {
   const query = {};
 
   if (filters.platform) {
-    query.platform = { $in: Array.isArray(filters.platform) ? filters.platform : [filters.platform] };
+    query.platform = {
+      $in: Array.isArray(filters.platform)
+        ? filters.platform
+        : [filters.platform],
+    };
   }
   if (filters.jobType) {
-    query.jobType = { $in: Array.isArray(filters.jobType) ? filters.jobType : [filters.jobType] };
+    query.jobType = {
+      $in: Array.isArray(filters.jobType) ? filters.jobType : [filters.jobType],
+    };
   }
   if (filters.location) {
     query.location = { $regex: filters.location, $options: "i" };
@@ -111,14 +137,11 @@ async function getMatchedJobs(userId, filters = {}, page = 1, limit = 10) {
   if (filters.salaryMax != null) {
     query.salaryMin = { $lte: Number(filters.salaryMax) };
   }
-  // applyType filter: only relevant for LinkedIn jobs
-  if (filters.applyType) {
-    query.applyType = { $in: Array.isArray(filters.applyType) ? filters.applyType : [filters.applyType] };
-  }
+  const existingApps = await Application.find({ userId: user._id }).select(
+    "jobId",
+  );
+  const appliedJobIds = existingApps.map((app) => app.jobId);
 
-  const existingApps = await Application.find({ userId: user._id }).select("jobId");
-  const appliedJobIds = existingApps.map(app => app.jobId);
-  
   if (appliedJobIds.length > 0) {
     query._id = { $nin: appliedJobIds };
   }
@@ -131,7 +154,7 @@ async function getMatchedJobs(userId, filters = {}, page = 1, limit = 10) {
   }));
 
   // Filter out irrelevant jobs
-  scoredJobs = scoredJobs.filter(job => job.matchScore > 0);
+  scoredJobs = scoredJobs.filter((job) => job.matchScore > 0);
 
   scoredJobs.sort((a, b) => b.matchScore - a.matchScore);
 

@@ -1,201 +1,587 @@
-// Load utility scripts
 importScripts("../utils/storage.js", "../utils/api.js", "../utils/logger.js");
 
-logger.info("Background service worker started");
+const ALARM_NAME = "jobpilot-queue-poll";
+const POLL_INTERVAL_MIN = 0.25;
+const JOB_COOLDOWN_MS = 3000;
+const TAB_LOAD_TIMEOUT_MS = 25000;
+const CONTENT_SCRIPT_TIMEOUT_MS = 90000;
 
-// Track current state
-let isApplying = false;
-let currentJobIndex = 0;
-let totalJobs = 0;
+const state = {
+  processing: false,
+  currentApp: null,
+  queueSize: 0,
+  processed: 0,
+  failed: 0,
+  skipped: 0,
+  resumeData: null,
+  lastPoll: null,
+  lastError: null,
+};
 
-// Listen for messages from popup
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === "startApplying") {
-    startApplicationProcess();
-    sendResponse({ status: "started" });
-  }
+// ── Lifecycle ────────────────────────────────────────────────────────────────
 
-  if (message.action === "getStatus") {
-    sendResponse({
-      isApplying,
-      currentJobIndex,
-      totalJobs,
-    });
-  }
+chrome.runtime.onInstalled.addListener(() => {
+  logger.info("Extension installed/updated — initializing queue poller");
+  ensureAlarm();
+});
 
-  // Return true to indicate we'll respond asynchronously
+chrome.runtime.onStartup.addListener(() => {
+  logger.info("Browser started — initializing queue poller");
+  ensureAlarm();
+});
+
+function ensureAlarm() {
+  chrome.alarms.get(ALARM_NAME, (existing) => {
+    if (!existing) {
+      chrome.alarms.create(ALARM_NAME, {
+        delayInMinutes: 0.15,
+        periodInMinutes: POLL_INTERVAL_MIN,
+      });
+      logger.info(
+        `Alarm "${ALARM_NAME}" created (every ${POLL_INTERVAL_MIN * 60}s)`
+      );
+    }
+  });
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ALARM_NAME) pollQueue();
+});
+
+// ── Message Handlers ─────────────────────────────────────────────────────────
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  handleMessage(msg)
+    .then(sendResponse)
+    .catch((e) => sendResponse({ error: e.message }));
   return true;
 });
-chrome.runtime.onMessageExternal.addListener(
-  (message, sender, sendResponse) => {
-    logger.info("External message received:", message.action);
 
-    if (message.action === "startApplying") {
-      startApplicationProcess();
-      sendResponse({ status: "started" });
-    }
+chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
+  logger.info("External message:", msg.action);
+  handleMessage(msg)
+    .then(sendResponse)
+    .catch((e) => sendResponse({ error: e.message }));
+  return true;
+});
 
-    return true;
-  },
-);
-// Main application process
-async function startApplicationProcess() {
-  if (isApplying) {
-    logger.warn("Already applying, ignoring duplicate request");
-    return;
+async function handleMessage(msg) {
+  switch (msg.action) {
+    case "ping":
+      return {
+        connected: true,
+        extensionId: chrome.runtime.id,
+        version: chrome.runtime.getManifest().version,
+        ...getSnapshot(),
+      };
+
+    case "getStatus":
+      return getSnapshot();
+
+    case "startApplying":
+    case "triggerPoll":
+      pollQueue();
+      return { triggered: true, ...getSnapshot() };
+
+    default:
+      return { error: "unknown_action" };
   }
+}
 
-  isApplying = true;
-  currentJobIndex = 0;
+function getSnapshot() {
+  return {
+    processing: state.processing,
+    queueSize: state.queueSize,
+    processed: state.processed,
+    failed: state.failed,
+    skipped: state.skipped,
+    currentJob: state.currentApp
+      ? {
+          id: state.currentApp._id,
+          title: state.currentApp.jobId?.title || "Unknown",
+          platform:
+            state.currentApp.platform || state.currentApp.jobId?.platform,
+        }
+      : null,
+    lastPoll: state.lastPoll,
+    lastError: state.lastError,
+  };
+}
+
+// ── Queue Polling ────────────────────────────────────────────────────────────
+
+async function pollQueue() {
+  if (state.processing) return;
+
+  const token = await getAuthToken();
+  if (!token) return;
+
+  state.lastPoll = Date.now();
 
   try {
-    // 1. Fetch queued applications from backend
-    logger.info("Fetching queued applications...");
     const data = await getQueuedApplications();
-    const applications = data.data || [];
+    const apps = data.data || [];
+    state.queueSize = apps.length;
+    state.lastError = null;
 
-    if (applications.length === 0) {
-      logger.info("No queued applications found");
-      sendProgressToPopup("No jobs in queue", 0, 0);
-      isApplying = false;
-      return;
+    if (apps.length > 0) {
+      logger.info(
+        `Poll found ${apps.length} queued jobs — starting processor`
+      );
+      await processQueue(apps);
     }
+  } catch (err) {
+    state.lastError = err.message;
+    logger.error("Poll failed:", err.message);
+  }
+}
 
-    totalJobs = applications.length;
-    logger.info(`Found ${totalJobs} queued applications`);
+// ── Queue Processor ──────────────────────────────────────────────────────────
 
-    // 2. Process each job one by one
-    for (let i = 0; i < applications.length; i++) {
-      currentJobIndex = i + 1;
+async function processQueue(applications) {
+  if (state.processing) return;
+  state.processing = true;
+  state.processed = 0;
+  state.failed = 0;
+  state.skipped = 0;
+
+  try {
+    await loadResumeData();
+
+    const total = applications.length;
+    broadcast(`Processing ${total} job(s)`, 0, total);
+
+    for (let i = 0; i < total; i++) {
       const app = applications[i];
-      const jobTitle = app.jobId?.title || "Unknown Job";
+      state.currentApp = app;
+      state.queueSize = total - i;
+
+      const jobTitle = app.jobId?.title || "Unknown";
       const jobUrl = app.jobId?.applicationUrl;
       const platform = app.jobId?.platform || app.platform;
-      const applyType = app.jobId?.applyType;
 
-      logger.info(`Processing ${currentJobIndex}/${totalJobs}: ${jobTitle}`);
-      sendProgressToPopup(
-        `Applying to: ${jobTitle}`,
-        currentJobIndex,
-        totalJobs,
-      );
+      const log = logger.withContext({ jobId: app._id, platform });
+
+      log.info(`[${i + 1}/${total}] ${jobTitle}`);
+      broadcast(`Applying: ${jobTitle}`, i + 1, total);
 
       if (!jobUrl) {
-        logger.error(`No URL for job: ${jobTitle}`);
-        await updateApplicationStatus(app._id, "failed", "No application URL");
-        continue;
-      }
-
-      // Skip LinkedIn company-site jobs — they can't be auto-applied
-      if (platform === "linkedin" && applyType === "company_site") {
-        logger.info(`⏭️ Skipping company-site job: ${jobTitle}`);
-        sendProgressToPopup(
-          `Skipped (company site): ${jobTitle}`,
-          currentJobIndex,
-          totalJobs,
-        );
-        await updateApplicationStatus(
-          app._id,
-          "review_needed",
-          "Company site application — apply manually via the job URL",
-        );
+        log.step("validate", "failed", "No application URL");
+        await safeStatusUpdate(app._id, "failed", "No application URL");
+        state.failed++;
         continue;
       }
 
       try {
-        await processJob(app, jobUrl);
-      } catch (error) {
-        logger.error(`Failed to process: ${jobTitle}`, error.message);
-        await updateApplicationStatus(app._id, "failed", error.message);
+        const result = await processOneJob(app, jobUrl, platform, log);
+        if (result.success) state.processed++;
+        else if (result.skip) state.skipped++;
+        else state.failed++;
+      } catch (err) {
+        log.error("Process error:", err.message);
+        await safeStatusUpdate(app._id, "failed", err.message);
+        state.failed++;
+      }
+
+      if (i < total - 1) await delay(JOB_COOLDOWN_MS);
+    }
+
+    broadcast(
+      `Done: ${state.processed} applied, ${state.failed} failed, ${state.skipped} skipped`,
+      total,
+      total
+    );
+    logger.info(
+      `Queue complete — applied:${state.processed} failed:${state.failed} skipped:${state.skipped}`
+    );
+  } finally {
+    state.processing = false;
+    state.currentApp = null;
+    state.queueSize = 0;
+  }
+}
+
+// ── Single Job Processor ─────────────────────────────────────────────────────
+
+async function processOneJob(application, jobUrl, platform, log) {
+  await safeStatusUpdate(application._id, "in_progress");
+  log.step("status", "in_progress");
+
+  const tab = await chrome.tabs.create({ url: jobUrl, active: false });
+  log.info(`Tab ${tab.id} opened`);
+
+  try {
+    await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
+    log.step("tabLoad", "complete");
+
+    await delay(2500);
+
+    const isNaukri = /naukri\.com/i.test(jobUrl);
+    const isLinkedIn = /linkedin\.com/i.test(jobUrl);
+
+    if (isNaukri) {
+      log.step("inject", "naukri");
+      await injectScripts(tab.id, [
+        "utils/dom.js",
+        "utils/formFiller.js",
+        "content-scripts/naukri.js",
+      ]);
+    } else if (isLinkedIn) {
+      log.step("inject", "linkedin");
+      await injectScripts(tab.id, [
+        "utils/dom.js",
+        "utils/formFiller.js",
+        "content-scripts/linkedin.js",
+      ]);
+    } else {
+      log.step("validate", "skipped", "Unsupported platform");
+      await safeStatusUpdate(
+        application._id,
+        "skipped",
+        "Unsupported platform"
+      );
+      return { success: false, skip: true };
+    }
+
+    await delay(500);
+
+    // ── Phase 1: Content script apply attempt (with retry) ──
+    let csResult;
+    try {
+      csResult = await sendMessageWithRetry(
+        tab.id,
+        { action: "applyToJob", resumeData: state.resumeData },
+        CONTENT_SCRIPT_TIMEOUT_MS,
+        isLinkedIn ? 4 : 1
+      );
+      log.step(
+        "contentScript",
+        csResult?.success ? "success" : "failure",
+        JSON.stringify(csResult)
+      );
+    } catch (msgErr) {
+      log.warn(`sendMessage error: ${msgErr.message}`);
+      log.step("contentScript", "error", msgErr.message);
+      csResult = null;
+    }
+
+    // ── Phase 2: If content script reported success, trust it ──
+    if (csResult?.success) {
+      log.step("decision", "applied", `CS reported success: ${csResult.message}`);
+      await safeStatusUpdate(
+        application._id,
+        "applied",
+        null,
+        csResult.message || "Applied successfully"
+      );
+      return { success: true };
+    }
+
+    // ── Phase 3: Content script failed or no response — run background verification ──
+    log.info("CS did not confirm success — running background verification");
+
+    await delay(4000);
+
+    const verified = await verifyApplicationOnPage(tab.id, platform, log);
+    if (verified.success) {
+      log.step("decision", "applied", `Background verified: ${verified.reason}`);
+      await safeStatusUpdate(
+        application._id,
+        "applied",
+        null,
+        `bg_verified: ${verified.reason}`
+      );
+      return { success: true };
+    }
+
+    // ── Phase 4: Extended recovery for Naukri redirects ──
+    if (isNaukri || !csResult) {
+      log.info("Running extended recovery checks");
+      const recovered = await attemptRecovery(tab.id, platform, log);
+      if (recovered.success) {
+        log.step("decision", "applied", `Recovery: ${recovered.message}`);
+        await safeStatusUpdate(
+          application._id,
+          "applied",
+          null,
+          `recovery: ${recovered.message}`
+        );
+        return { success: true };
       }
     }
 
-    logger.info("All jobs processed!");
-    sendProgressToPopup("Done! All jobs processed", totalJobs, totalJobs);
-  } catch (error) {
-    logger.error("Application process failed:", error.message);
-    sendProgressToPopup("Error: " + error.message, 0, 0);
+    // ── Phase 5: Truly failed ──
+    const errorMsg =
+      csResult?.error || verified.reason || "Apply could not be verified";
+    const finalStatus = csResult?.skip ? "skipped" : "failed";
+    log.step("decision", finalStatus, errorMsg);
+    await safeStatusUpdate(application._id, finalStatus, errorMsg);
+    return { success: false, skip: csResult?.skip };
   } finally {
-    isApplying = false;
+    try {
+      await chrome.tabs.remove(tab.id);
+    } catch {}
   }
 }
 
-// Process a single job - open tab, inject content script, apply
-async function processJob(application, jobUrl) {
-  // 1. Update status to in_progress
-  await updateApplicationStatus(application._id, "in_progress");
+// ── Shared Success Detection Constants ────────────────────────────────────────
 
-  // 2. Open job URL in a new tab
-  const tab = await chrome.tabs.create({
-    url: jobUrl,
-    active: false, // Don't switch to the tab, keep working in background
-  });
+const NAUKRI_URL_SUCCESS_PATTERNS = [
+  "/myapply/saveapply",
+  "multiapplyresp",
+  "/applied",
+  "/thankjob",
+  "/apply/confirmation",
+  "applystatus=success",
+];
 
-  logger.info(`Opened tab ${tab.id} for: ${jobUrl}`);
-
-  // 3. Wait for tab to fully load
-  await waitForTabLoad(tab.id);
-  logger.info(`Tab ${tab.id} loaded`);
-
-  // 4. Wait a bit extra for dynamic content to render
-  await delay(3000);
-
-  // 5. Inject the correct content script based on platform
-  //    For LinkedIn: linkedin.js is already registered in manifest.json,
-  //    but we inject programmatically as a fallback for reliability
-  let contentScript = "content-scripts/naukri.js";
-  if (jobUrl.includes("linkedin.com")) {
-    contentScript = "content-scripts/linkedin.js";
+/**
+ * Injected into the tab via executeScript. Checks text, DOM, buttons, and
+ * dialogs for any sign the application was submitted. Returns a result
+ * object or null.
+ */
+function probePageForSuccess() {
+  const text = (document.body?.innerText || "").toLowerCase();
+  const successPhrases = [
+    "application submitted",
+    "your application was sent",
+    "already applied",
+    "successfully applied",
+    "application sent",
+    "you have already applied",
+    "applied successfully",
+    "congratulations",
+    "application was submitted",
+    "your application has been submitted",
+    "application received",
+  ];
+  for (const phrase of successPhrases) {
+    if (text.includes(phrase)) return { match: "text", detail: phrase };
   }
 
-  logger.info(`Injecting ${contentScript} into tab ${tab.id}...`);
+  if (
+    document.querySelector(
+      ".already-applied, [class*='alreadyApplied'], " +
+        "[class*='styles_already-applied'], " +
+        ".artdeco-inline-feedback--success, " +
+        "[class*='post-apply'], .jpac-modal-confirm"
+    )
+  ) {
+    return { match: "dom", detail: "success_element_found" };
+  }
+
+  const applyBtns = document.querySelectorAll(
+    "#apply-button, .apply-button, [class*='apply-btn'], [class*='applyButton']"
+  );
+  for (const btn of applyBtns) {
+    if (btn.textContent.toLowerCase().includes("applied")) {
+      return { match: "button", detail: "button_says_applied" };
+    }
+  }
+
+  const dialogs = document.querySelectorAll(
+    ".artdeco-modal, [role='dialog']"
+  );
+  for (const d of dialogs) {
+    const dt = d.textContent.toLowerCase();
+    if (
+      dt.includes("application submitted") ||
+      dt.includes("application was sent")
+    ) {
+      return { match: "dialog", detail: "dialog_confirms_submit" };
+    }
+  }
+
+  return null;
+}
+
+function checkUrlForSuccess(url) {
+  for (const pattern of NAUKRI_URL_SUCCESS_PATTERNS) {
+    if (url.includes(pattern)) {
+      return { success: true, reason: `url_match:${pattern}` };
+    }
+  }
+  return null;
+}
+
+// ── Background Page Verification ─────────────────────────────────────────────
+
+async function verifyApplicationOnPage(tabId, platform, log) {
   try {
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: [contentScript],
+    const tab = await chrome.tabs.get(tabId);
+    const url = (tab.url || "").toLowerCase();
+    log.info(`Verify: tab URL = ${url}`);
+
+    const urlMatch = checkUrlForSuccess(url);
+    if (urlMatch) return urlMatch;
+
+    const [probe] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: probePageForSuccess,
     });
-  } catch (injectErr) {
-    // May fail if script already injected via manifest — that's OK
-    logger.warn(`Script injection note: ${injectErr.message}`);
+
+    if (probe?.result) {
+      const r = probe.result;
+      const reason = `${r.match}:${r.detail}`;
+      log.info(`Verify: page probe found — ${reason}`);
+      return { success: true, reason };
+    }
+
+    log.info("Verify: no success signal on page");
+    return { success: false, reason: "no_signal" };
+  } catch (err) {
+    if (platform === "naukri") {
+      log.info(
+        `Verify: tab inaccessible (${err.message}) — Naukri redirect likely succeeded`
+      );
+      return { success: true, reason: "tab_gone_naukri_redirect" };
+    }
+    log.warn(`Verify: tab error (${err.message})`);
+    return { success: false, reason: `tab_error:${err.message}` };
   }
-
-  // 6. Tell the content script to apply
-  logger.info(`Sending applyToJob message to tab ${tab.id}...`);
-  const results = await chrome.tabs.sendMessage(tab.id, {
-    action: "applyToJob",
-  });
-
-  logger.info(`Result from content script:`, JSON.stringify(results));
-
-  // 7. Update status based on result
-  if (results && results.success) {
-    await updateApplicationStatus(application._id, "applied");
-    logger.info(`✅ Applied: ${application.jobId?.title} - ${results.message}`);
-  } else {
-    const errorMsg = results?.error || "Unknown error";
-    await updateApplicationStatus(application._id, "review_needed", errorMsg);
-    logger.warn(`⚠️ Needs review: ${application.jobId?.title} - ${errorMsg}`);
-  }
-
-  // 8. Close the tab
-  await chrome.tabs.remove(tab.id);
-  logger.info(`Closed tab ${tab.id}`);
-
-  // 9. Delay between jobs to not overwhelm the browser
-  await delay(2000);
 }
 
-// Wait for a tab to finish loading
-function waitForTabLoad(tabId) {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      chrome.tabs.onUpdated.removeListener(listener);
-      reject(new Error("Tab load timeout"));
-    }, 15000); // 15 second timeout
+// ── Extended Recovery ────────────────────────────────────────────────────────
 
-    function listener(updatedTabId, changeInfo) {
-      if (updatedTabId === tabId && changeInfo.status === "complete") {
-        clearTimeout(timeout);
+async function attemptRecovery(tabId, platform, log) {
+  const MAX_ATTEMPTS = 5;
+  const WAIT_MS = 3000;
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    await delay(WAIT_MS);
+
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      const url = (tab.url || "").toLowerCase();
+      log.info(`Recovery ${attempt + 1}/${MAX_ATTEMPTS}: URL = ${url}`);
+
+      const urlMatch = checkUrlForSuccess(url);
+      if (urlMatch) return { success: true, message: urlMatch.reason };
+
+      if (tab.status === "complete") {
+        const [probe] = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: probePageForSuccess,
+        });
+
+        if (probe?.result) {
+          return { success: true, message: "page_content_success" };
+        }
+      }
+    } catch (tabErr) {
+      log.info(`Recovery: tab gone (${tabErr.message})`);
+      return { success: true, message: "tab_closed_after_apply" };
+    }
+  }
+
+  return {
+    success: false,
+    message: "recovery_exhausted",
+    error: "No success signal after extended recovery",
+  };
+}
+
+// ── Resume Data ──────────────────────────────────────────────────────────────
+
+async function loadResumeData() {
+  try {
+    const resp = await getResumeDataFromApi();
+    state.resumeData = resp.data || null;
+    if (state.resumeData) {
+      await setStoredResumeData(state.resumeData);
+      logger.info("Resume data loaded:", state.resumeData.name);
+    }
+  } catch (e) {
+    const cached = await getStoredResumeData();
+    if (cached) {
+      state.resumeData = cached;
+      logger.info("Using cached resume data");
+    } else {
+      logger.warn("No resume data available:", e.message);
+    }
+  }
+}
+
+// ── Script Injection ─────────────────────────────────────────────────────────
+
+async function injectScripts(tabId, files) {
+  for (const file of files) {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: [file],
+      });
+    } catch (e) {
+      logger.warn(`Inject ${file} failed: ${e.message}`);
+    }
+  }
+}
+
+// ── Messaging ────────────────────────────────────────────────────────────────
+
+function sendMessageWithTimeout(tabId, message, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("Content script timeout")),
+      timeoutMs
+    );
+
+    chrome.tabs.sendMessage(tabId, message, (response) => {
+      clearTimeout(timer);
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+      } else {
+        resolve(response);
+      }
+    });
+  });
+}
+
+async function sendMessageWithRetry(tabId, message, timeoutMs, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await sendMessageWithTimeout(tabId, message, timeoutMs);
+      return result;
+    } catch (err) {
+      const isConnectionError =
+        err.message.includes("Receiving end does not exist") ||
+        err.message.includes("Could not establish connection");
+
+      if (isConnectionError && attempt < maxRetries) {
+        logger.warn(
+          `sendMessage attempt ${attempt}/${maxRetries} failed (connection) — retrying in ${attempt * 1500}ms`
+        );
+        await delay(attempt * 1500);
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+// ── Status Update ────────────────────────────────────────────────────────────
+
+async function safeStatusUpdate(appId, status, errorMessage, reason) {
+  try {
+    await updateApplicationStatus(appId, status, errorMessage, reason);
+    logger.info(`Status updated: ${appId} → ${status}`);
+  } catch (e) {
+    logger.error(`Status update FAILED (${appId} → ${status}):`, e.message);
+  }
+}
+
+// ── Tab Load ─────────────────────────────────────────────────────────────────
+
+function waitForTabComplete(tabId, timeoutMs) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    }, timeoutMs);
+
+    function listener(id, info) {
+      if (id === tabId && info.status === "complete") {
+        clearTimeout(timer);
         chrome.tabs.onUpdated.removeListener(listener);
         resolve();
       }
@@ -205,21 +591,16 @@ function waitForTabLoad(tabId) {
   });
 }
 
-// Send progress update to popup
-function sendProgressToPopup(message, current, total) {
+// ── Broadcast ────────────────────────────────────────────────────────────────
+
+function broadcast(message, current, total) {
   chrome.runtime
-    .sendMessage({
-      type: "progress",
-      message,
-      current,
-      total,
-    })
-    .catch(() => {
-      // Popup might be closed, that's fine
-    });
+    .sendMessage({ type: "progress", message, current, total })
+    .catch(() => {});
 }
 
-// Promise-based delay
+// ── Utils ────────────────────────────────────────────────────────────────────
+
 function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((r) => setTimeout(r, ms));
 }

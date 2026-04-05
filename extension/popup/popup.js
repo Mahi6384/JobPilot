@@ -1,54 +1,45 @@
-
-
-// DOM elements
-
 const loginView = document.getElementById("loginView");
-const connectedView = document.getElementById("connectedView");
+const dashView = document.getElementById("dashView");
 const emailInput = document.getElementById("emailInput");
 const passwordInput = document.getElementById("passwordInput");
 const loginBtn = document.getElementById("loginBtn");
 const errorMsg = document.getElementById("errorMsg");
 const userName = document.getElementById("userName");
-const queueCount = document.getElementById("queueCount");
-const startBtn = document.getElementById("startBtn");
+const queueLabel = document.getElementById("queueLabel");
+const currentJobCard = document.getElementById("currentJobCard");
+const currentJobTitle = document.getElementById("currentJobTitle");
+const statApplied = document.getElementById("statApplied");
+const statFailed = document.getElementById("statFailed");
+const statSkipped = document.getElementById("statSkipped");
+const autoBadge = document.getElementById("autoBadge");
+const devToggle = document.getElementById("devToggle");
 const logoutBtn = document.getElementById("logoutBtn");
+const extId = document.getElementById("extId");
 
-// Listen for progress updates from background worker
-chrome.runtime.onMessage.addListener((message) => {
-  if (message.type === "progress") {
-    queueCount.textContent =
-      message.current > 0
-        ? `⏳ ${message.current}/${message.total} - ${message.message}`
-        : message.message;
-  }
-});
+let pollTimer = null;
 
-// Start Applying button click
-startBtn.addEventListener("click", async () => {
-  startBtn.textContent = "Applying...";
-  startBtn.disabled = true;
+// ── Init ─────────────────────────────────────────────────────────────────────
 
-  // Send message to background worker to start processing
-  chrome.runtime.sendMessage({ action: "startApplying" }, (response) => {
-    logger.info("Background responded:", response);
-  });
-});
-
-// On popup open - check if already logged in
 document.addEventListener("DOMContentLoaded", async () => {
+  extId.textContent = `ID: ${chrome.runtime.id}`;
+
+  const mode = await getConfig("apiMode");
+  if (mode === "dev") devToggle.classList.add("active");
+
   const token = await getAuthToken();
   if (token) {
-    await showConnectedView();
+    showDashboard();
   }
 });
 
-// Login button click
+// ── Login ────────────────────────────────────────────────────────────────────
+
 loginBtn.addEventListener("click", async () => {
   const email = emailInput.value.trim();
   const password = passwordInput.value.trim();
 
   if (!email || !password) {
-    showError("Please enter email and password");
+    showError("Enter email and password");
     return;
   }
 
@@ -56,72 +47,127 @@ loginBtn.addEventListener("click", async () => {
     loginBtn.textContent = "Logging in...";
     loginBtn.disabled = true;
 
-    // Call your existing login endpoint
-    // We use fetch directly here because we don't have a token yet
-    const response = await fetch(`${API_BASE}/auth/login`, {
+    const data = await apiCall("/auth/login", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.message || "Login failed");
-    }
-
-    // Save token and user profile
     await setAuthToken(data.token);
     await setUserProfile(data.user);
 
-    logger.info("Logged in as:", data.user.email);
-    await showConnectedView();
-  } catch (error) {
-    showError(error.message);
-    logger.error("Login failed:", error.message);
+    showDashboard();
+  } catch (err) {
+    showError(err.message);
   } finally {
     loginBtn.textContent = "Login";
     loginBtn.disabled = false;
   }
 });
 
-// Logout button click
+// ── Logout ───────────────────────────────────────────────────────────────────
+
 logoutBtn.addEventListener("click", async () => {
+  stopPolling();
   await clearStorage();
-  connectedView.classList.add("hidden");
+  dashView.classList.add("hidden");
   loginView.classList.remove("hidden");
   emailInput.value = "";
   passwordInput.value = "";
-  logger.info("Logged out");
 });
 
-// Show connected view with user info
-async function showConnectedView() {
+// ── Dev Mode Toggle ──────────────────────────────────────────────────────────
+
+devToggle.addEventListener("click", async () => {
+  const currentMode = await getConfig("apiMode");
+  const newMode = currentMode === "dev" ? "prod" : "dev";
+  await setConfig("apiMode", newMode);
+  devToggle.classList.toggle("active", newMode === "dev");
+});
+
+// ── Dashboard ────────────────────────────────────────────────────────────────
+
+async function showDashboard() {
   const profile = await getUserProfile();
-  userName.textContent = profile?.email || "User";
-
+  userName.textContent = profile?.fullName || profile?.email || "User";
   loginView.classList.add("hidden");
-  connectedView.classList.remove("hidden");
+  dashView.classList.remove("hidden");
 
-  await loadQueueCount();
+  refreshStatus();
+  startPolling();
 }
 
-// Fetch and show queue count
-async function loadQueueCount() {
-  try {
-    const data = await getQueuedApplications();
-    const count = data.data ? data.data.length : 0;
-    queueCount.textContent =
-      count > 0 ? `📋 ${count} jobs in queue` : "No jobs in queue";
-  } catch (error) {
-    queueCount.textContent = "Could not load queue";
-    logger.error("Failed to load queue:", error.message);
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(refreshStatus, 2000);
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
   }
 }
 
-// Show error message
+async function refreshStatus() {
+  try {
+    const status = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ action: "getStatus" }, resolve);
+    });
+
+    if (!status) return;
+
+    if (status.processing) {
+      autoBadge.textContent = "RUNNING";
+      autoBadge.className = "badge-auto";
+
+      queueLabel.textContent = `Processing ${status.queueSize} job(s)...`;
+
+      if (status.currentJob) {
+        currentJobCard.classList.remove("hidden");
+        currentJobTitle.textContent = status.currentJob.title;
+      } else {
+        currentJobCard.classList.add("hidden");
+      }
+    } else {
+      autoBadge.textContent = "AUTO";
+      autoBadge.className = "badge-auto";
+      currentJobCard.classList.add("hidden");
+
+      if (status.queueSize > 0) {
+        queueLabel.textContent = `${status.queueSize} jobs in queue`;
+      } else {
+        queueLabel.textContent = "No jobs in queue — watching for new jobs";
+      }
+    }
+
+    statApplied.textContent = status.processed || 0;
+    statFailed.textContent = status.failed || 0;
+    statSkipped.textContent = status.skipped || 0;
+
+    if (status.lastError) {
+      queueLabel.textContent += ` (last error: ${status.lastError})`;
+    }
+  } catch {
+    queueLabel.textContent = "Could not reach background worker";
+  }
+}
+
+// ── Background progress messages ─────────────────────────────────────────────
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === "progress") {
+    if (message.current > 0 && message.total > 0) {
+      queueLabel.textContent = `${message.current}/${message.total} — ${message.message}`;
+    } else {
+      queueLabel.textContent = message.message;
+    }
+  }
+});
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
 function showError(msg) {
   errorMsg.textContent = msg;
   errorMsg.classList.remove("hidden");
-  setTimeout(() => errorMsg.classList.add("hidden"), 3000);
+  setTimeout(() => errorMsg.classList.add("hidden"), 4000);
 }

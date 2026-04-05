@@ -3,63 +3,166 @@
   <head>
     <meta charset="UTF-8" />
     <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
       body {
-        width: 320px;
+        width: 360px;
         padding: 20px;
-        font-family: Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: #0f172a;
+        color: #e2e8f0;
       }
-      h1 {
-        font-size: 18px;
-        margin-bottom: 10px;
+      .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+      .header-left { display: flex; align-items: center; gap: 8px; }
+      .header h1 { font-size: 18px; font-weight: 700; color: #f8fafc; }
+      .badge {
+        font-size: 10px; background: #3b82f6; color: white;
+        padding: 2px 8px; border-radius: 10px; font-weight: 600;
       }
+      .badge-auto {
+        font-size: 10px; background: #059669; color: white;
+        padding: 2px 8px; border-radius: 10px; font-weight: 600;
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+      }
+
       input {
-        width: 100%;
-        padding: 8px;
-        margin: 8px 0;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        box-sizing: border-box;
+        width: 100%; padding: 10px 12px; margin: 6px 0;
+        background: #1e293b; border: 1px solid #334155;
+        border-radius: 8px; color: #f1f5f9; font-size: 14px;
+        outline: none; transition: border-color 0.2s;
       }
+      input:focus { border-color: #3b82f6; }
+      input::placeholder { color: #64748b; }
+
       button {
-        width: 100%;
-        padding: 10px;
-        background: #4a90d9;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 14px;
-        margin-top: 8px;
+        width: 100%; padding: 10px; border: none; border-radius: 8px;
+        font-size: 14px; font-weight: 600; cursor: pointer;
+        transition: all 0.2s; margin-top: 8px;
       }
-      button:hover {
-        background: #357abd;
+      .btn-primary { background: #3b82f6; color: white; }
+      .btn-primary:hover { background: #2563eb; }
+      .btn-primary:disabled { background: #1e40af; opacity: 0.6; cursor: not-allowed; }
+      .btn-danger { background: #991b1b; color: #fca5a5; font-size: 12px; }
+      .btn-danger:hover { background: #7f1d1d; }
+
+      .error { color: #f87171; font-size: 12px; margin-top: 8px; }
+      .hidden { display: none; }
+
+      .card {
+        background: #1e293b; border: 1px solid #334155;
+        border-radius: 10px; padding: 12px; margin: 8px 0;
       }
-      .error {
-        color: red;
-        font-size: 12px;
+      .card-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+      .card-value { font-size: 15px; color: #f1f5f9; font-weight: 600; }
+
+      .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 8px 0; }
+      .stat-item { text-align: center; padding: 8px; background: #0f172a; border-radius: 8px; }
+      .stat-number { font-size: 20px; font-weight: 700; }
+      .stat-label { font-size: 10px; color: #64748b; margin-top: 2px; }
+      .text-green { color: #34d399; }
+      .text-red { color: #f87171; }
+      .text-yellow { color: #fbbf24; }
+      .text-gray { color: #94a3b8; }
+
+      .user-row { font-size: 13px; color: #94a3b8; margin-bottom: 12px; }
+      .user-row strong { color: #f1f5f9; }
+
+      .current-job {
+        font-size: 13px; color: #93c5fd; line-height: 1.4;
+        padding: 8px 10px; background: #1e3a5f; border-radius: 8px;
+        border-left: 3px solid #3b82f6; margin: 8px 0;
       }
-      .hidden {
-        display: none;
+
+      .toggle-row {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 8px 0; font-size: 13px;
       }
+      .toggle-row label { color: #94a3b8; }
+      .toggle {
+        position: relative; width: 36px; height: 20px;
+        background: #334155; border-radius: 10px; cursor: pointer;
+        transition: background 0.2s;
+      }
+      .toggle.active { background: #3b82f6; }
+      .toggle::after {
+        content: ''; position: absolute; top: 2px; left: 2px;
+        width: 16px; height: 16px; background: white;
+        border-radius: 50%; transition: transform 0.2s;
+      }
+      .toggle.active::after { transform: translateX(16px); }
+
+      .ext-id {
+        font-size: 10px; color: #475569; word-break: break-all;
+        margin-top: 8px; text-align: center;
+      }
+
+      .divider { border: none; border-top: 1px solid #1e293b; margin: 12px 0; }
     </style>
   </head>
   <body>
     <!-- Login View -->
     <div id="loginView">
-      <h1>🚀 JobPilot</h1>
+      <div class="header">
+        <div class="header-left">
+          <h1>JobPilot</h1>
+          <span class="badge">v3.0</span>
+        </div>
+      </div>
       <input type="email" id="emailInput" placeholder="Email" />
       <input type="password" id="passwordInput" placeholder="Password" />
-      <button id="loginBtn">Login</button>
+      <button id="loginBtn" class="btn-primary">Login</button>
       <p id="errorMsg" class="error hidden"></p>
     </div>
 
-    <!-- Connected View -->
-    <div id="connectedView" class="hidden">
-      <h1>🚀 JobPilot</h1>
-      <p>Connected as: <strong id="userName"></strong></p>
-      <p id="queueCount"></p>
-      <button id="startBtn">Start Applying</button>
-      <button id="logoutBtn" style="background: #e74c3c">Disconnect</button>
+    <!-- Dashboard View -->
+    <div id="dashView" class="hidden">
+      <div class="header">
+        <div class="header-left">
+          <h1>JobPilot</h1>
+          <span class="badge">v3.0</span>
+        </div>
+        <span id="autoBadge" class="badge-auto">AUTO</span>
+      </div>
+
+      <p class="user-row">Signed in as <strong id="userName"></strong></p>
+
+      <div class="card">
+        <div class="card-label">Queue Status</div>
+        <div class="card-value" id="queueLabel">Checking...</div>
+      </div>
+
+      <div id="currentJobCard" class="current-job hidden">
+        Applying to: <strong id="currentJobTitle"></strong>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-number text-green" id="statApplied">0</div>
+          <div class="stat-label">Applied</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number text-red" id="statFailed">0</div>
+          <div class="stat-label">Failed</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-number text-yellow" id="statSkipped">0</div>
+          <div class="stat-label">Skipped</div>
+        </div>
+      </div>
+
+      <hr class="divider" />
+
+      <div class="toggle-row">
+        <label>Development Mode</label>
+        <div id="devToggle" class="toggle"></div>
+      </div>
+
+      <button id="logoutBtn" class="btn-danger">Disconnect</button>
+
+      <div class="ext-id" id="extId"></div>
     </div>
 
     <script src="../utils/storage.js"></script>

@@ -1,127 +1,162 @@
 const Job = require("../models/jobModel");
 const User = require("../models/userModel");
 const Application = require("../models/applicationModel");
-const getMatchedJobs = require("../services/matchingService").getMatchedJobs;
+const {
+  getMatchedJobs: getMatchedJobsService,
+} = require("../services/matchingService");
 const logger = require("../utils/logger");
 
-// get api/jobs/filters
-const getMatchedJobsHandles = async(req, res)=>{
-    try{
-        const {
-            platform, jobType, jobtype, applyType, location, experienceMin, experienceMax, salaryMin, salaryMax, page = 1, limit = 10
-        } = req.query;
+const getMatchedJobs = async (req, res) => {
+  try {
+    const {
+      platform,
+      jobType,
+      location,
+      experienceMin,
+      experienceMax,
+      salaryMin,
+      salaryMax,
+      page = 1,
+      limit = 10,
+    } = req.query;
 
-        const filters = {};
-        // Support both camelCase (jobType) and lowercase (jobtype) from older clients
-        const resolvedJobType = jobType || jobtype;
+    const filters = {};
 
-        if (platform) filters.platform = platform.split(",");
-        if (resolvedJobType) filters.jobType = resolvedJobType.split(",");
-        if (applyType) filters.applyType = applyType.split(",");
-        if (location) filters.location = location;
-        if (experienceMin) filters.experienceMin = experienceMin;
-        if (experienceMax) filters.experienceMax = experienceMax;
-        if (salaryMin) filters.salaryMin = salaryMin;
-        if (salaryMax) filters.salaryMax = salaryMax;
+    if (platform) filters.platform = platform.split(",");
+    if (jobType) filters.jobType = jobType.split(",");
+    if (location) filters.location = location;
+    if (experienceMin) filters.experienceMin = experienceMin;
+    if (experienceMax) filters.experienceMax = experienceMax;
+    if (salaryMin) filters.salaryMin = salaryMin;
+    if (salaryMax) filters.salaryMax = salaryMax;
 
-        const result = await getMatchedJobs(req.userId, filters, Number(page), Number(limit));
-        return res.status(200).json(result);
+    const result = await getMatchedJobsService(
+      req.userId,
+      filters,
+      Number(page),
+      Number(limit),
+    );
+    return res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    logger.error("Error fetching matched jobs", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
 
-    }
-    catch(error){
-        logger.error("Error in getMatchedJobsHandles", error);
-        return res.status(500).json({ error: "Internal server error" });
-    }
-}
+const getJobFilters = async (req, res) => {
+  try {
+    const [platforms, jobTypes, locations] = await Promise.all([
+      Job.distinct("platform").exec(),
+      Job.distinct("jobType").exec(),
+      Job.distinct("location").exec(),
+    ]);
+    return res
+      .status(200)
+      .json({ success: true, platforms, jobTypes, locations });
+  } catch (error) {
+    logger.error("Error fetching job filters", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch job filters" });
+  }
+};
 
-const getJobFilters = async(req, res) =>{
-    try{
-        const[platforms, jobTypes, locations] = await Promise.all([
-            Job.distinct("platform").exec(),
-            Job.distinct("jobType").exec(),
-            Job.distinct("location").exec(),
-        ])
-        return res.status(200).json({platforms, jobTypes, locations});
+const getJobById = async (req, res) => {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
     }
-    catch(error){
-        logger.error("Error in fetching job filters", error);
-        return res.status(500).json({ error: "failed to fetch job filters" });
-    }
-}
-
-const getJobsById = async (req, res) =>{
-    try{
-        const job = await Job.findById(req.params.id);
-        if(!job){
-            return res.status(404).json({ error: "Job not found" });
-        }
-        return res.status(200).json(job);
-    }
-    catch(error){
-        logger.error("Error in fetching job by id", error);
-        return res.status(500).json({ error: "failed to fetch job by id" });
-    }
-}
+    return res.status(200).json({ success: true, data: job });
+  } catch (error) {
+    logger.error("Error fetching job by id", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch job" });
+  }
+};
 
 const getDashboardData = async (req, res) => {
-    try {
-        const topJobs = await getMatchedJobs(req.userId, {}, 1, 5);
-        const totalMatches = await Job.countDocuments({});
+  try {
+    const topJobs = await getMatchedJobsService(req.userId, {}, 1, 5);
 
-        // Compute real stats from Application model
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-
-        const [appliedToday, totalApplied, totalApplications] = await Promise.all([
-            Application.countDocuments({
-                userId: req.userId,
-                status: "applied",
-                appliedAt: { $gte: todayStart },
-            }),
-            Application.countDocuments({
-                userId: req.userId,
-                status: "applied",
-            }),
-            Application.countDocuments({
-                userId: req.userId,
-            }),
-        ]);
-
-        const successRate = totalApplications > 0
-            ? Math.round((totalApplied / totalApplications) * 100)
-            : 0;
-
-        return res.status(200).json({
-            stats: {
-                totalMatches,
-                appliedToday,
-                successRate,
-            },
-            topJobs: topJobs.jobs,
-        });
-    } catch (error) {
-        logger.error("Error in getDashboardData", error);
-        return res.status(500).json({ error: "Internal server error" });
+    const user = await User.findById(req.userId).select("targetJobTitle");
+    let totalMatches = 0;
+    if (user?.targetJobTitle) {
+      const escaped = user.targetJobTitle.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        "\\$&",
+      );
+      totalMatches = await Job.countDocuments({
+        title: { $regex: escaped, $options: "i" },
+      });
     }
+    if (totalMatches === 0) {
+      totalMatches = await Job.countDocuments({});
+    }
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [appliedToday, totalApplied, totalApplications] = await Promise.all([
+      Application.countDocuments({
+        userId: req.userId,
+        status: "applied",
+        appliedAt: { $gte: todayStart },
+      }),
+      Application.countDocuments({
+        userId: req.userId,
+        status: "applied",
+      }),
+      Application.countDocuments({
+        userId: req.userId,
+        status: { $in: ["applied", "failed", "skipped"] },
+      }),
+    ]);
+
+    const successRate =
+      totalApplications > 0
+        ? Math.round((totalApplied / totalApplications) * 100)
+        : 0;
+
+    return res.status(200).json({
+      success: true,
+      stats: { totalMatches, appliedToday, successRate, totalApplied },
+      topJobs: topJobs.jobs,
+    });
+  } catch (error) {
+    logger.error("Error fetching dashboard data", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
 };
 
 const getJobSearchStatus = async (req, res) => {
-    try {
-        const user = await User.findById(req.userId).select("jobSearchStatus");
-        if (!user) {
-            return res.status(404).json({ error: "User not found" });
-        }
-        return res.status(200).json({ jobSearchStatus: user.jobSearchStatus });
-    } catch (error) {
-        logger.error("Error in getJobSearchStatus", error);
-        return res.status(500).json({ error: "Internal server error" });
+  try {
+    const user = await User.findById(req.userId).select("jobSearchStatus");
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
+    return res
+      .status(200)
+      .json({ success: true, jobSearchStatus: user.jobSearchStatus });
+  } catch (error) {
+    logger.error("Error fetching job search status", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
 };
 
 module.exports = {
-    getMatchedJobsHandles,
-    getJobFilters,
-    getJobsById,
-    getDashboardData,
-    getJobSearchStatus
-}
+  getMatchedJobs,
+  getJobFilters,
+  getJobById,
+  getDashboardData,
+  getJobSearchStatus,
+};

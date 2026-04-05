@@ -13,7 +13,6 @@ function parseSalary(salaryString) {
   if (!salaryString || salaryString === "Not disclosed") {
     return { min: 0, max: 0 };
   }
-
   const numbers = salaryString.match(/(\d+\.?\d*)/g);
   if (!numbers) return { min: 0, max: 0 };
   const min = parseFloat(numbers[0]);
@@ -23,11 +22,9 @@ function parseSalary(salaryString) {
 
 function detectJobType(location, title) {
   const text = `${location} ${title}`.toLowerCase();
-
-  if (text.includes("remote") || text.includes("work from home"))
-    return "remote";
+  if (text.includes("remote") || text.includes("work from home")) return "remote";
   if (text.includes("hybrid")) return "hybrid";
-  return "hybrid";
+  return "onsite";
 }
 
 function cleanSkills(skills) {
@@ -44,63 +41,48 @@ function cleanSkills(skills) {
   return Array.from(seen.values()).slice(0, 10);
 }
 
-function transformJobs(rawJobs) {
-  return rawJobs.map((job) => {
-    const exp = parseExperience(job.experience);
-    const salary = parseSalary(job.salary);
+/**
+ * Transforms a single raw job object into the DB schema format.
+ * Shared by both Naukri and LinkedIn pipelines.
+ */
+function transformJob(raw, platform) {
+  const exp = parseExperience(raw.experience);
+  const salary = parseSalary(raw.salary);
 
-    return {
-      title: job.title || "Unknown",
-      company: job.company || "Unknown",
-      location: job.location || "Not specified",
-      jobType: detectJobType(job.location || "", job.title || ""),
-      experienceMin: exp.min,
-      experienceMax: exp.max,
-      salaryMin: salary.min,
-      salaryMax: salary.max,
-      skills: cleanSkills(job.skills),
-      description: `${job.title} at ${job.company}. Experience: ${job.experience || "N/A"}. Salary: ${job.salary || "Not disclosed"}`,
-      platform: "naukri",
-      applicationUrl: job.applicationUrl,
-      easyApply: true,
-      applyType: "easy_apply",
-      postedDate: new Date(),
-      scrapedAt: new Date(),
-    };
-  });
+  const fallbackDescription = `${raw.title} at ${raw.company}. Experience: ${raw.experience || "N/A"}. Salary: ${raw.salary || "Not disclosed"}`;
+
+  return {
+    title: raw.title || "Unknown",
+    company: raw.company || "Unknown",
+    location: raw.location || "Not specified",
+    jobType: detectJobType(raw.location || "", raw.title || ""),
+    experienceMin: exp.min,
+    experienceMax: exp.max,
+    salaryMin: raw.salaryMin || salary.min,
+    salaryMax: raw.salaryMax || salary.max,
+    skills: cleanSkills(raw.skills),
+    description: raw.description || fallbackDescription,
+    platform,
+    applicationUrl: raw.applicationUrl,
+    easyApply: true,
+    applyType: "easy_apply",
+    postedDate: raw.postedDate || new Date(),
+    scrapedAt: new Date(),
+  };
+}
+
+function transformJobs(rawJobs) {
+  return rawJobs.map((job) => transformJob(job, "naukri"));
 }
 
 function transformLinkedinJobs(rawJobs) {
-  return rawJobs.map((job) => {
-    const exp = parseExperience(job.experience);
-    const salary = parseSalary(job.salary);
-
-    return {
-      title: job.title || "Unknown",
-      company: job.company || "Unknown",
-      location: job.location || "Not specified",
-      jobType: detectJobType(job.location || "", job.title || ""),
-      experienceMin: exp.min,
-      experienceMax: exp.max,
-      salaryMin: job.salaryMin || salary.min,
-      salaryMax: job.salaryMax || salary.max,
-      skills: cleanSkills(job.skills),
-      description:
-        job.description ||
-        `${job.title} at ${job.company}. Experience: ${job.experience || "N/A"}. Salary: ${job.salary || "Not disclosed"}`,
-      applyType: "easy_apply",
-      platform: "linkedin",
-      applicationUrl: job.applicationUrl,
-      easyApply: true,
-      postedDate: job.postedDate || new Date(),
-      scrapedAt: new Date(),
-    };
-  });
+  return rawJobs.map((job) => transformJob(job, "linkedin"));
 }
 
 module.exports = {
   transformJobs,
   transformLinkedinJobs,
+  transformJob,
   parseExperience,
   parseSalary,
   cleanSkills,

@@ -1,5 +1,9 @@
 /**
  * Retry utility for handling transient failures
+ * 
+ * @note This utility is currently NOT in active use by the core application
+ * but is maintained for future use in scraper/network-heavy components.
+ * @unused
  */
 
 /**

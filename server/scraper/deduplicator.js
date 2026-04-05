@@ -1,6 +1,7 @@
 const Job = require("../models/jobModel");
 const Application = require("../models/applicationModel");
 const config = require("./config");
+const logger = require("../utils/logger");
 
 async function filterNewJobs(jobs) {
   const existingUrls = await Job.distinct("applicationUrl");
@@ -15,8 +16,8 @@ async function filterNewJobs(jobs) {
 
   const newJobs = Array.from(uniqueMap.values());
 
-  console.log(
-    `   Deduplication: ${jobs.length} scraped → ${newJobs.length} new (${jobs.length - newJobs.length} duplicates)`,
+  logger.info(
+    `Deduplication: ${jobs.length} scraped → ${newJobs.length} new (${jobs.length - newJobs.length} duplicates)`
   );
 
   return newJobs;
@@ -34,11 +35,11 @@ async function cleanupOldJobs() {
   });
 
   if (result.deletedCount > 0) {
-    console.log(
-      `   Cleaned up ${result.deletedCount} old jobs (older than ${config.jobMaxAgeDays} days)`,
+    logger.info(
+      `Cleaned up ${result.deletedCount} old jobs (older than ${config.jobMaxAgeDays} days)`
     );
   } else {
-    console.log("   No old jobs to clean up");
+    logger.info("No old jobs to clean up");
   }
 
   return result.deletedCount;

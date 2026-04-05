@@ -8,7 +8,6 @@ async function queueJobs() {
   try {
     await mongoose.connect(process.env.MONGODB_URI);
 
-    // Get your user
     const user = await User.findOne();
     if (!user) {
       console.log("No user found! Sign up first.");
@@ -16,33 +15,22 @@ async function queueJobs() {
     }
     console.log(`Using user: ${user.email}`);
 
-    // Get 5 naukri jobs
-    const appliedJobs = await Application.distinct("jobId", {
+    const appliedJobIds = await Application.distinct("jobId", {
       userId: user._id,
     });
 
     const jobs = await Job.find({
       platform: "naukri",
-      _id: { $nin: appliedJobs },
+      _id: { $nin: appliedJobIds },
     }).limit(5);
     console.log(`Found ${jobs.length} jobs to queue`);
 
-    // Create applications with status "queued"
     for (const job of jobs) {
-      const existing = await Application.findOne({
-        userId: user._id,
-        jobId: job._id,
-      });
-      // if (existing) {
-      //   console.log(`Already queued: ${job.title}`);
-      //   continue;
-      // }
-
       await Application.create({
         userId: user._id,
         jobId: job._id,
         status: "queued",
-        platform: "Naukri",
+        platform: "naukri",
       });
       console.log(`✅ Queued: ${job.title} at ${job.company}`);
     }

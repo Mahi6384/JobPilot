@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "JobPilot Auto Apply",
-  "version": "1.0.0",
-  "description": "Automatically apply to matched jobs with one click",
+  "version": "3.0.0",
+  "description": "Automatically apply to matched jobs on Naukri and LinkedIn with smart form filling",
 
-  "permissions": ["storage", "tabs", "activeTab", "scripting"],
+  "permissions": ["storage", "tabs", "activeTab", "scripting", "alarms"],
 
   "host_permissions": [
     "*://www.naukri.com/*",
@@ -21,12 +21,14 @@
   "action": {
     "default_popup": "popup/popup.html"
   },
+
   "externally_connectable": {
     "matches": [
       "http://localhost:5173/*",
       "https://jobpilot-wheat.vercel.app/*"
     ]
   },
+
   "content_scripts": [
     {
       "matches": [
@@ -36,6 +38,31 @@
       ],
       "js": ["content-scripts/linkedin.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://localhost:5173/*",
+        "https://jobpilot-wheat.vercel.app/*"
+      ],
+      "js": ["content-scripts/bridge.js"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "utils/dom.js",
+        "utils/formFiller.js",
+        "content-scripts/naukri.js"
+      ],
+      "matches": [
+        "*://www.naukri.com/*",
+        "*://naukri.com/*",
+        "*://www.linkedin.com/*",
+        "*://in.linkedin.com/*",
+        "*://linkedin.com/*"
+      ]
     }
   ]
 }

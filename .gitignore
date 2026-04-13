@@ -23,10 +23,13 @@ dist-ssr
 *.sln
 *.sw?
 
- Ignore environment files
+# Ignore environment files
 .env
 .env.local
 .env.*.local
+*/.env
+*/.env.local
+*/.env.*.local
 
 # Browser data (cookies, sessions)
 jobpilot/server/browser-data/

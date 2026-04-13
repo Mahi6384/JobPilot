@@ -8,772 +8,1201 @@ if (!globalThis.__JOBPILOT_LI_INIT__) {
     error: (...a) => console.error(TAG, ...a),
   };
 
+  const TIMEOUT_MS = 80000;
+  const MAX_MODAL_STEPS = 25;
+
   let _resumeData = null;
 
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message.action === "applyToJob") {
-      _resumeData = message.resumeData || null;
-      log.info("Received applyToJob message");
-      runWithTimeout(applyToJob, 80000)
-        .then((result) => {
-          log.info("Apply flow resolved:", JSON.stringify(result));
-          sendResponse(result);
-        })
-        .catch((err) => {
-          log.error("Apply flow rejected:", err.message);
-          const finalCheck = detectSubmissionSuccess() || detectAlreadyApplied();
-          if (finalCheck) {
-            log.info("Error caught BUT success detected on page — reporting success");
-            sendResponse({ success: true, message: "success_after_error" });
-          } else {
-            sendResponse({ success: false, error: err.message });
-          }
-        });
-      return true;
-    }
+  const YES_NO_DEFAULTS = {
+    authorize: "Yes",
+    authorized: "Yes",
+    legally: "Yes",
+    "right to work": "Yes",
+    "work permit": "Yes",
+    "eligible to work": "Yes",
+    sponsorship: "No",
+    "require sponsorship": "No",
+    "need sponsorship": "No",
+    "visa sponsor": "No",
+    relocate: "Yes",
+    "willing to relocate": "Yes",
+    commute: "Yes",
+    "willing to commute": "Yes",
+    "background check": "Yes",
+    "drug test": "Yes",
+    "non-compete": "No",
+    "non compete": "No",
+    "18 years": "Yes",
+    "over 18": "Yes",
+  };
+
+  log.info("Content script loaded", {
+    url: location.href,
+    readyState: document.readyState,
+    isTopFrame: window === window.top,
   });
 
-  function runWithTimeout(fn, ms) {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        log.warn("Timeout reached — running final success probe");
-        if (detectSubmissionSuccess() || detectAlreadyApplied()) {
-          resolve({ success: true, message: "success_at_timeout" });
-        } else {
-          reject(new Error("Apply flow timed out"));
-        }
-      }, ms);
-      fn()
-        .then((result) => {
-          clearTimeout(timer);
-          resolve(result);
-        })
-        .catch((err) => {
-          clearTimeout(timer);
-          reject(err);
-        });
-    });
+  // ── Shadow DOM Access ───────────────────────────────────────────────────
+  // LinkedIn 2025+ renders the Easy Apply modal inside a Shadow DOM
+  // attached to div#interop-outlet. Regular document.querySelector cannot
+  // see inside it, so every query must go through getShadowRoot().
+
+  function getShadowRoot() {
+    const host = document.getElementById("interop-outlet");
+    return host?.shadowRoot || null;
   }
 
-  // ── Main Flow ──────────────────────────────────────────────────────────────
+  function queryShadow(selector) {
+    const sr = getShadowRoot();
+    return sr ? sr.querySelector(selector) : null;
+  }
+
+  function queryAllShadow(selector) {
+    const sr = getShadowRoot();
+    return sr ? sr.querySelectorAll(selector) : [];
+  }
+
+  // ── Message Listener ──────────────────────────────────────────────────────
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    log.info("Message received:", message.action);
+    if (message.action !== "applyToJob") return;
+
+    _resumeData = message.resumeData || null;
+    log.info("Received applyToJob", {
+      hasResumeData: !!_resumeData,
+      resumeKeys: _resumeData ? Object.keys(_resumeData) : [],
+      url: location.href,
+    });
+
+    withTimeout(applyToJob(), TIMEOUT_MS)
+      .then((result) => {
+        log.info("Result:", JSON.stringify(result));
+        sendResponse(result);
+      })
+      .catch((err) => {
+        log.error("Error:", err.message);
+        sendResponse(
+          detectSuccess()
+            ? { success: true, message: "success_after_error" }
+            : { success: false, error: err.message }
+        );
+      });
+
+    return true;
+  });
+
+  // ── Main Apply Flow ───────────────────────────────────────────────────────
 
   async function applyToJob() {
-    log.info("Starting LinkedIn Easy Apply flow");
+    log.info("=== APPLY FLOW START ===", { url: location.href });
 
     if (detectAlreadyApplied()) {
-      log.info("Already applied to this job");
       return { success: true, message: "already_applied" };
     }
 
-    const easyApplyBtn = findEasyApplyButton();
+    await ensurePageLoaded();
+    await _delay(3000);
+
+    const easyApplyBtn = await findEasyApplyButton(25000);
     if (!easyApplyBtn) {
-      return {
-        success: false,
-        error: "No Easy Apply button found",
-        skip: true,
-      };
+      return { success: false, error: "No Easy Apply button found", skip: true };
     }
 
-    log.info("Clicking Easy Apply button");
-    safeClickElement(easyApplyBtn);
+    log.info("Easy Apply button found", describeEl(easyApplyBtn));
+
+    clickElement(easyApplyBtn);
+    log.info("Click dispatched — waiting for modal...");
     await _delay(2500);
 
     if (detectAlreadyApplied()) {
-      log.info("Instant apply succeeded (1-click)");
       return { success: true, message: "instant_apply" };
     }
 
-    const modal = await waitForModal(10000);
+    const modal = await waitForModal(15000);
     if (!modal) {
-      if (detectAlreadyApplied() || detectSubmissionSuccess()) {
-        return { success: true, message: "applied_no_modal" };
-      }
-      return { success: false, error: "Easy Apply modal did not appear" };
+      log.error("Modal NOT found after 15s");
+      log.info("Shadow root exists:", !!getShadowRoot());
+      return detectSuccess()
+        ? { success: true, message: "applied_no_modal" }
+        : { success: false, error: "Easy Apply modal did not appear" };
     }
 
-    log.info("Modal detected — entering multi-step flow");
-    return await handleMultiStepModal(modal);
-  }
-
-  // ── Multi-Step Modal ───────────────────────────────────────────────────────
-
-  async function handleMultiStepModal(_initialModal) {
-    const MAX_STEPS = 20;
-
-    for (let step = 0; step < MAX_STEPS; step++) {
-      await _delay(1500);
-
-      // Check for success at start of each iteration
-      if (detectSubmissionSuccess()) {
-        log.info("Submission success detected in modal loop");
-        dismissPostSubmit();
-        return { success: true, message: "application_submitted" };
-      }
-
-      if (detectAlreadyApplied()) {
-        log.info("Already-applied detected in modal loop");
-        return { success: true, message: "already_applied_in_loop" };
-      }
-
-      const modal = findModal();
-      if (!modal) {
-        await _delay(2500);
-        if (detectSubmissionSuccess() || detectAlreadyApplied()) {
-          return { success: true, message: "applied_modal_closed" };
-        }
-        return { success: false, error: "Modal closed unexpectedly" };
-      }
-
-      // Fill form fields
-      const fieldCount = fillModalFields(modal);
-      if (fieldCount > 0) {
-        log.info(`Step ${step + 1}: filled ${fieldCount} fields`);
-        await _delay(800);
-      }
-
-      // Check for errors/validation messages after filling
-      dismissErrors(modal);
-
-      // Priority 1: Submit button
-      const submitBtn = findButtonInModal(modal, [
-        "Submit application",
-        "Submit",
-      ]);
-      if (submitBtn) {
-        log.info("Clicking Submit application");
-        safeClickElement(submitBtn);
-        await _delay(4000);
-
-        if (detectSubmissionSuccess() || detectAlreadyApplied()) {
-          dismissPostSubmit();
-          return { success: true, message: "submitted" };
-        }
-
-        // Wait a bit more — LinkedIn can be slow
-        await _delay(3000);
-        if (detectSubmissionSuccess() || detectAlreadyApplied()) {
-          dismissPostSubmit();
-          return { success: true, message: "submitted_delayed" };
-        }
-
-        // Check if modal is still showing with errors (NOT success)
-        const stillModal = findModal();
-        if (stillModal) {
-          const hasError = stillModal.querySelector(
-            ".artdeco-inline-feedback--error, [data-test-form-element-error], .fb-dash-form-element__error-field"
-          );
-          if (hasError) {
-            log.warn("Submit clicked but validation errors remain");
-            return {
-              success: false,
-              error: "Form validation errors after submit",
-            };
-          }
-        }
-
-        // Modal gone but no success text? Check once more
-        await _delay(2000);
-        if (detectSubmissionSuccess() || detectAlreadyApplied()) {
-          dismissPostSubmit();
-          return { success: true, message: "submitted_final_check" };
-        }
-
-        // If modal is truly gone, that's a good sign
-        if (!findModal()) {
-          log.info("Modal closed after submit — treating as success");
-          return { success: true, message: "modal_closed_after_submit" };
-        }
-
-        log.warn("Submit clicked but could not verify — continuing loop");
-        continue;
-      }
-
-      // Priority 2: Review button
-      const reviewBtn = findButtonInModal(modal, [
-        "Review your application",
-        "Review",
-      ]);
-      if (reviewBtn) {
-        log.info("Clicking Review");
-        safeClickElement(reviewBtn);
-        await _delay(1500);
-        continue;
-      }
-
-      // Priority 3: Next button
-      const nextBtn = findButtonInModal(modal, [
-        "Continue to next step",
-        "Next",
-      ]);
-      if (nextBtn) {
-        // Check if there are blocking required fields
-        if (hasBlockingRequiredFields(modal)) {
-          fillModalFields(modal);
-          await _delay(600);
-          if (hasBlockingRequiredFields(modal)) {
-            // Try to fill unfilled required fields with safe defaults
-            fillRequiredFieldsWithDefaults(modal);
-            await _delay(400);
-            if (hasBlockingRequiredFields(modal)) {
-              log.warn("Required fields could not be filled — skipping job");
-              dismissModal(modal);
-              return {
-                success: false,
-                error: "Required fields could not be auto-filled",
-              };
-            }
-          }
-        }
-        log.info("Clicking Next");
-        safeClickElement(nextBtn);
-        await _delay(1500);
-        continue;
-      }
-
-      // Priority 4: Any other forward-moving button
-      const fallbackBtn = findFallbackButton(modal);
-      if (fallbackBtn) {
-        log.info(`Clicking fallback: "${fallbackBtn.textContent.trim()}"`);
-        safeClickElement(fallbackBtn);
-        await _delay(1500);
-        continue;
-      }
-
-      log.warn(`No actionable button in step ${step + 1} — waiting extra`);
-      await _delay(2000);
-    }
-
-    // Final check after loop exhaustion
-    await _delay(2000);
-    if (detectSubmissionSuccess() || detectAlreadyApplied()) {
-      dismissPostSubmit();
-      return { success: true, message: "submitted_after_loop" };
-    }
-
-    return { success: false, error: "Could not complete Easy Apply modal" };
-  }
-
-  // ── Form Filling ───────────────────────────────────────────────────────────
-
-  function fillModalFields(modal) {
-    let filled = 0;
-
-    modal.querySelectorAll("input, textarea, select").forEach((field) => {
-      if (field.type === "hidden" || field.type === "file") return;
-      if (field.type === "radio" || field.type === "checkbox") return;
-
-      // Handle native <select>
-      if (field.tagName === "SELECT") {
-        if (fillDropdown(field, _resumeData)) filled++;
-        return;
-      }
-
-      // Skip already-filled fields
-      if (field.value && field.value.trim() !== "") return;
-
-      // Check if this is a typeahead/autocomplete input
-      if (isLinkedInTypeahead(field)) {
-        const label = getFieldLabel(field);
-        const mapped = matchFieldToKey(label);
-        if (mapped) {
-          const value = resolveValue(mapped.key, _resumeData, mapped.fallback);
-          if (value) {
-            fillTypeaheadField(field, value);
-            filled++;
-          }
-        }
-      } else {
-        if (fillTextField(field, _resumeData)) filled++;
-      }
+    log.info("=== MODAL FOUND ===", {
+      tag: modal.tagName,
+      class: (modal.className?.toString?.() || "").slice(0, 200),
+      role: modal.getAttribute("role"),
+      headerText: getModalHeaderText(modal),
     });
 
-    // Handle radio groups
-    filled += fillUncheckedRadios(modal);
-
-    return filled;
+    return await stepThroughModal();
   }
 
-  function fillUncheckedRadios(modal) {
-    let filled = 0;
-    const handled = new Set();
+  // ── Modal Detection (LinkedIn 2025 Shadow DOM) ────────────────────────────
+  // The modal is: div.artdeco-modal.jobs-easy-apply-modal[role="dialog"]
+  // inside #interop-outlet's shadowRoot.
 
-    modal.querySelectorAll("fieldset").forEach((fs) => {
-      const radios = fs.querySelectorAll("input[type='radio']");
-      if (radios.length === 0) return;
-      
-      const name = radios[0].getAttribute("name");
-      if (name) handled.add(name);
-
-      if (fillRadioGroup(radios)) filled++;
-    });
-
-    // Handle radio groups not inside fieldsets
-    const radioGroups = new Map();
-    modal.querySelectorAll("input[type='radio']").forEach((r) => {
-      const name = r.getAttribute("name");
-      if (!name || handled.has(name) || radioGroups.has(name)) return;
-      radioGroups.set(
-        name,
-        modal.querySelectorAll(`input[type='radio'][name='${name}']`)
-      );
-    });
-    
-    radioGroups.forEach((radios) => {
-      if (fillRadioGroup(radios)) filled++;
-    });
-
-    return filled;
-  }
-
-  function fillLinkedInCustomDropdowns(modal) {
-    let filled = 0;
-
-    // LinkedIn uses custom dropdown components with role="listbox" / "combobox"
-    modal
-      .querySelectorAll(
-        "select:not([data-jp-filled]), [data-test-text-selectable-option]"
-      )
-      .forEach((el) => {
-        if (el.tagName === "SELECT" && el.selectedIndex > 0) return;
-        // Already handled native selects above
-      });
-
-    return filled;
-  }
-
-  // ── Typeahead Handling ─────────────────────────────────────────────────────
-
-  function isLinkedInTypeahead(field) {
-    if (field.getAttribute("role") === "combobox") return true;
-    const wrapper =
-      field.closest("[class*='typeahead']") ||
-      field.closest("[class*='autocomplete']") ||
-      field.closest("[class*='text-entity-list-text-input']");
-    return !!wrapper;
-  }
-
-  async function fillTypeaheadField(field, value) {
-    log.info(`Filling typeahead with: "${value}"`);
-
-    // Focus and clear
-    field.focus();
-    setNativeValue(field, "");
-    await _delay(200);
-
-    // Type character by character (abbreviated — just set value and trigger events)
-    setNativeValue(field, value);
-    await _delay(800);
-
-    // Try to select the first dropdown option
-    const dropdown =
-      document.querySelector("ul[role='listbox']") ||
-      document.querySelector("[class*='typeahead-results']") ||
-      document.querySelector("[class*='basic-typeahead']");
-
-    if (dropdown) {
-      const firstOption = dropdown.querySelector(
-        "[role='option'], li, [class*='typeahead__option']"
-      );
-      if (firstOption) {
-        log.info("Selecting first typeahead option");
-        firstOption.click();
-        await _delay(300);
-        return;
+  function getVisibleModal() {
+    // Primary: search inside Shadow DOM (LinkedIn 2025+)
+    const sr = getShadowRoot();
+    if (sr) {
+      const modal =
+        sr.querySelector(".jobs-easy-apply-modal") ||
+        sr.querySelector('.artdeco-modal[role="dialog"]') ||
+        sr.querySelector('[role="dialog"]');
+      if (modal && isVisible(modal)) {
+        return modal;
       }
     }
 
-    // If no dropdown appeared, dispatch Enter to confirm
-    field.dispatchEvent(
-      new KeyboardEvent("keydown", {
-        key: "Enter",
-        code: "Enter",
-        keyCode: 13,
-        bubbles: true,
-      })
-    );
-  }
-
-  // ── Fill required fields with safe defaults ────────────────────────────────
-
-  function fillRequiredFieldsWithDefaults(modal) {
-    modal
-      .querySelectorAll(
-        "input[required], select[required], textarea[required], [aria-required='true']"
-      )
-      .forEach((field) => {
-        if (field.type === "hidden" || field.type === "file") return;
-        if (field.value && field.value.trim() !== "") return;
-
-        if (field.tagName === "SELECT") {
-          fillDropdown(field, _resumeData); // Fallback to first option
-          return;
+    // Fallback: search in light DOM (older LinkedIn or different layouts)
+    for (const sel of [
+      ".jobs-easy-apply-modal",
+      ".jobs-easy-apply-content",
+      '.artdeco-modal[role="dialog"]',
+      '[role="dialog"]',
+    ]) {
+      const el = document.querySelector(sel);
+      if (el && isVisible(el)) {
+        const text = (el.textContent || "").toLowerCase();
+        if (
+          text.includes("apply to") ||
+          text.includes("easy apply") ||
+          text.includes("contact info") ||
+          el.querySelector("input, select, textarea")
+        ) {
+          return el;
         }
-
-        if (field.type === "radio" || field.type === "checkbox") return;
-
-        // Assign a safe default value based on input type
-        let defaultVal = "0";
-        if (field.type === "number") defaultVal = "0";
-        else if (field.type === "tel") defaultVal = _resumeData?.phone || "0";
-        else if (field.type === "email")
-          defaultVal = _resumeData?.email || "na@na.com";
-        else if (field.type === "url")
-          defaultVal = _resumeData?.linkedinUrl || "https://linkedin.com";
-        else defaultVal = "N/A";
-
-        setNativeValue(field, defaultVal);
-        log.info(
-          `Default-filled required field "${getFieldLabel(field)}" with "${defaultVal}"`
-        );
-      });
-  }
-
-  // Removed redundant helper functions that are now handled by shared utils:
-  // getLinkedInLabel, mapField, setFieldValue, fillLinkedInDropdown
-
-
-  // ── Required Fields ────────────────────────────────────────────────────────
-
-  function hasBlockingRequiredFields(modal) {
-    const required = modal.querySelectorAll(
-      "input[required], select[required], textarea[required]"
-    );
-    for (const field of required) {
-      if (field.type === "hidden" || field.type === "file") continue;
-      if (field.type === "radio") {
-        // Check if any radio in the group is checked
-        const name = field.getAttribute("name");
-        if (name) {
-          const group = modal.querySelectorAll(
-            `input[type='radio'][name='${name}']`
-          );
-          if (Array.from(group).some((r) => r.checked)) continue;
-        }
-        return true;
-      }
-      if (!field.value || field.value.trim() === "") return true;
-    }
-
-    // Also check LinkedIn's custom required indicators
-    const customRequired = modal.querySelectorAll(
-      "[data-test-form-element] [aria-required='true']"
-    );
-    for (const field of customRequired) {
-      if (field.tagName === "INPUT" || field.tagName === "TEXTAREA") {
-        if (!field.value || field.value.trim() === "") return true;
       }
     }
-
-    return false;
-  }
-
-  // ── Button Finders ─────────────────────────────────────────────────────────
-
-  function findEasyApplyButton() {
-    // Strategy 1: aria-label match (case insensitive)
-    const byAria = document.querySelector(
-      'button[aria-label*="Easy Apply" i]'
-    );
-    if (byAria && isVisible(byAria) && !byAria.disabled) return byAria;
-
-    // Strategy 2: LinkedIn-specific class selectors
-    const byClass = document.querySelector(
-      ".jobs-apply-button, .jobs-apply-button--top-card, [class*='jobs-apply-button']"
-    );
-    if (byClass && isVisible(byClass) && !byClass.disabled) {
-      const text = normalizeText(byClass.textContent);
-      if (text.includes("easy apply") || text === "apply") return byClass;
-    }
-
-    // Strategy 3: Text content matching on all buttons
-    const buttons = document.querySelectorAll(
-      "button, [role='button'], a.artdeco-button"
-    );
-    for (const btn of buttons) {
-      if (btn.closest("header, nav, #global-nav")) continue;
-      if (btn.disabled || !isVisible(btn)) continue;
-      const text = normalizeText(btn.textContent);
-      if (text === "easy apply" || text.startsWith("easy apply")) return btn;
-    }
-
-    // Strategy 4: SVG icon-based detection (Easy Apply has a special icon)
-    const allBtns = document.querySelectorAll("button");
-    for (const btn of allBtns) {
-      if (!isVisible(btn) || btn.disabled) continue;
-      const svg = btn.querySelector("li-icon[type='apply-dash']");
-      if (svg) return btn;
-    }
-
-    return null;
-  }
-
-  function findModal() {
-    // Strategy 1: LinkedIn's specific easy-apply modal class
-    const specific = document.querySelector(
-      ".jobs-easy-apply-modal, .jobs-easy-apply-content"
-    );
-    if (specific) {
-      const modal = specific.closest(
-        '.artdeco-modal[role="dialog"], [role="dialog"], .artdeco-modal'
-      );
-      return modal || specific;
-    }
-
-    // Strategy 2: artdeco modal with easy-apply related content
-    const modals = document.querySelectorAll(
-      '.artdeco-modal[role="dialog"], [role="dialog"].artdeco-modal, .artdeco-modal--is-open'
-    );
-    for (const m of modals) {
-      if (!isVisible(m)) continue;
-      const text = m.textContent.toLowerCase();
-      if (
-        text.includes("easy apply") ||
-        text.includes("submit application") ||
-        m.querySelector(".jobs-easy-apply-content, [class*='easy-apply']")
-      ) {
-        return m;
-      }
-    }
-
-    // Strategy 3: Any visible dialog that contains form elements
-    for (const m of modals) {
-      if (!isVisible(m)) continue;
-      const hasForm =
-        m.querySelector("input, select, textarea, form") ||
-        m.querySelector("button[aria-label*='Submit']") ||
-        m.querySelector("button[aria-label*='Next']");
-      if (hasForm) return m;
-    }
-
-    // Strategy 4: data-test-modal
-    const dataModal = document.querySelector(
-      "[data-test-modal][class*='easy-apply'], [data-test-modal]"
-    );
-    if (dataModal && isVisible(dataModal)) return dataModal;
 
     return null;
   }
 
   function waitForModal(timeoutMs) {
     return new Promise((resolve) => {
-      const deadline = Date.now() + timeoutMs;
-      const check = setInterval(() => {
-        const modal = findModal();
-        if (modal) {
-          clearInterval(check);
-          resolve(modal);
-        } else if (Date.now() > deadline) {
-          clearInterval(check);
-          resolve(null);
-        }
-      }, 400);
+      const found = getVisibleModal();
+      if (found) {
+        log.info("waitForModal: found immediately");
+        return resolve(found);
+      }
+
+      let settled = false;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        if (observer) observer.disconnect();
+        if (shadowObserver) shadowObserver.disconnect();
+        clearTimeout(timer);
+        clearInterval(poller);
+        resolve(result);
+      };
+
+      const check = () => {
+        const modal = getVisibleModal();
+        if (modal) finish(modal);
+      };
+
+      // Observe light DOM mutations
+      const observer = new MutationObserver(check);
+      observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["class", "role", "aria-hidden", "style"],
+      });
+
+      // Observe shadow DOM mutations if available
+      let shadowObserver = null;
+      const sr = getShadowRoot();
+      if (sr) {
+        shadowObserver = new MutationObserver(check);
+        shadowObserver.observe(sr, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["class", "role", "aria-hidden", "style"],
+        });
+      }
+
+      const poller = setInterval(check, 500);
+
+      const timer = setTimeout(() => {
+        log.warn("waitForModal: timeout — final scan");
+        finish(getVisibleModal());
+      }, timeoutMs);
     });
   }
 
-  /**
-   * Flexible button finder: matches by aria-label OR visible text content.
-   * Case-insensitive, uses includes() rather than exact match.
-   */
-  function findButtonInModal(modal, labels) {
-    if (!modal) return null;
+  function getModalHeaderText(modal) {
+    if (!modal) return "";
+    const h = modal.querySelector("h2, h3, h1, [class*='title']");
+    return h ? h.textContent.trim().slice(0, 100) : "";
+  }
 
-    const buttons = modal.querySelectorAll("button");
+  // ── Modal Stepper ─────────────────────────────────────────────────────────
+
+  async function stepThroughModal() {
+    for (let step = 0; step < MAX_MODAL_STEPS; step++) {
+      await _delay(1500);
+
+      if (detectSuccess()) {
+        log.info(`Step ${step + 1}: SUCCESS detected`);
+        dismissPostSubmitDialog();
+        return { success: true, message: "application_submitted" };
+      }
+
+      if (detectAlreadyApplied()) {
+        return { success: true, message: "already_applied_in_loop" };
+      }
+
+      const modal = getVisibleModal();
+      if (!modal) {
+        await _delay(2500);
+        return detectSuccess()
+          ? { success: true, message: "applied_modal_closed" }
+          : { success: false, error: "Modal closed unexpectedly" };
+      }
+
+      log.info(`Step ${step + 1}: header = "${getModalHeaderText(modal)}"`);
+
+      if (handleDiscardDialog(modal)) {
+        await _delay(1000);
+        continue;
+      }
+
+      const fieldCount = await fillFormFields(modal);
+      log.info(`Step ${step + 1}: filled ${fieldCount} field(s)`);
+      if (fieldCount > 0) await _delay(800);
+
+      const errors = modal.querySelectorAll(
+        ".artdeco-inline-feedback--error, [data-test-form-element-error], " +
+        ".fb-dash-form-element__error-field"
+      );
+      if (errors.length > 0) {
+        log.warn(`Step ${step + 1}: ${errors.length} error(s) — re-filling`);
+        await fillFormFields(modal);
+        await _delay(500);
+        fillRequiredWithDefaults(modal);
+        await _delay(500);
+      }
+
+      const action = pickModalAction(modal);
+      log.info(`Step ${step + 1}: action = ${action.type}`, action.btn ? {
+        btnText: action.btn.textContent?.trim()?.slice(0, 60),
+        btnAria: action.btn.getAttribute("aria-label"),
+      } : {});
+
+      if (action.type === "submit") {
+        clickElement(action.btn);
+        const submitted = await confirmSubmission();
+        if (submitted) return submitted;
+        continue;
+      }
+
+      if (action.type === "review") {
+        clickElement(action.btn);
+        await _delay(2000);
+        continue;
+      }
+
+      if (action.type === "next") {
+        if (hasEmptyRequiredFields(modal)) {
+          log.info("Required fields empty — filling defaults");
+          await fillFormFields(modal);
+          await _delay(600);
+          fillRequiredWithDefaults(modal);
+          await _delay(400);
+        }
+        clickElement(action.btn);
+        await _delay(2000);
+
+        const postClickModal = getVisibleModal();
+        if (postClickModal) {
+          const postErrors = postClickModal.querySelectorAll(
+            ".artdeco-inline-feedback--error"
+          );
+          if (postErrors.length > 0) {
+            log.warn("Errors after Next — re-filling");
+            await fillFormFields(postClickModal);
+            fillRequiredWithDefaults(postClickModal);
+            await _delay(500);
+          }
+        }
+        continue;
+      }
+
+      if (action.type === "fallback") {
+        clickElement(action.btn);
+        await _delay(2000);
+        continue;
+      }
+
+      log.warn(`Step ${step + 1}: no actionable button — waiting`);
+      await _delay(2500);
+    }
+
+    await _delay(2000);
+    if (detectSuccess()) {
+      dismissPostSubmitDialog();
+      return { success: true, message: "submitted_after_loop" };
+    }
+
+    return { success: false, error: "Could not complete Easy Apply modal" };
+  }
+
+  async function confirmSubmission() {
+    for (const waitMs of [4000, 3000, 2000]) {
+      await _delay(waitMs);
+      if (detectSuccess()) {
+        dismissPostSubmitDialog();
+        return { success: true, message: "submitted" };
+      }
+    }
+
+    const stillOpen = getVisibleModal();
+    if (stillOpen) {
+      const hasError = stillOpen.querySelector(
+        ".artdeco-inline-feedback--error, [data-test-form-element-error]"
+      );
+      if (hasError) {
+        log.warn("Validation errors after submit");
+        return null;
+      }
+    }
+
+    if (!getVisibleModal()) {
+      return { success: true, message: "modal_closed_after_submit" };
+    }
+
+    log.warn("Submit unverified — continuing");
+    return null;
+  }
+
+  function pickModalAction(modal) {
+    // LinkedIn 2025 buttons:
+    //   Submit: aria-label="Submit application", text "Submit application"
+    //   Review: aria-label="Review your application", text "Review"
+    //   Next:   aria-label="Continue to next step", text "Next"
+    //   Dismiss: class artdeco-modal__dismiss, aria-label="Dismiss"
+
+    const submit = findButtonInContainer(modal, [
+      "Submit application", "Submit",
+    ]);
+    if (submit) return { type: "submit", btn: submit };
+
+    const review = findButtonInContainer(modal, [
+      "Review your application", "Review",
+    ]);
+    if (review) return { type: "review", btn: review };
+
+    const next = findButtonInContainer(modal, [
+      "Continue to next step", "Next",
+    ]);
+    if (next) return { type: "next", btn: next };
+
+    const fallback = findButtonInContainer(modal, [
+      "Continue", "Save", "Done", "Upload",
+    ]);
+    if (fallback) return { type: "fallback", btn: fallback };
+
+    return { type: "none" };
+  }
+
+  // ── Form Filling ──────────────────────────────────────────────────────────
+
+  async function fillFormFields(modal) {
+    let filled = 0;
+
+    // 1. Text inputs and textareas (class: artdeco-text-input--input)
+    for (const field of modal.querySelectorAll("input, textarea")) {
+      if (field.type === "hidden" || field.type === "file") continue;
+      if (field.type === "radio" || field.type === "checkbox") continue;
+      if (field.value && field.value.trim() !== "") continue;
+
+      if (isTypeaheadInput(field)) {
+        const label = _getFieldLabel(field);
+        const mapped = matchFieldToKey(label);
+        if (mapped) {
+          const value = resolveValue(mapped.key, _resumeData, mapped.fallback);
+          if (value) {
+            await fillTypeahead(field, value);
+            filled++;
+            continue;
+          }
+        }
+        const yesNo = resolveYesNoDefault(label);
+        if (yesNo) {
+          await fillTypeahead(field, yesNo);
+          filled++;
+        }
+      } else {
+        if (fillTextField(field, _resumeData)) {
+          filled++;
+          continue;
+        }
+        const label = _getFieldLabel(field);
+        const numericVal = resolveNumericDefault(label);
+        if (numericVal !== null && !field.value) {
+          _setNativeValue(field, numericVal);
+          log.info(`Numeric default: "${label}" → "${numericVal}"`);
+          filled++;
+          continue;
+        }
+        const yesNoVal = resolveYesNoDefault(label);
+        if (yesNoVal && !field.value) {
+          _setNativeValue(field, yesNoVal);
+          log.info(`YesNo: "${label}" → "${yesNoVal}"`);
+          filled++;
+        }
+      }
+    }
+
+    // 2. Native <select> dropdowns (class: fb-dash-form-element__select-dropdown)
+    for (const sel of modal.querySelectorAll("select")) {
+      if (fillDropdown(sel, _resumeData)) filled++;
+    }
+
+    // 3. LinkedIn custom dropdowns
+    filled += await fillLinkedInCustomDropdowns(modal);
+
+    // 4. Radio groups
+    filled += fillAllRadioGroups(modal);
+
+    // 5. Agreement checkboxes
+    filled += fillCheckboxes(modal);
+
+    return filled;
+  }
+
+  function fillAllRadioGroups(modal) {
+    let filled = 0;
+    const handledNames = new Set();
+
+    for (const fs of modal.querySelectorAll("fieldset")) {
+      const radios = fs.querySelectorAll("input[type='radio']");
+      if (radios.length === 0) continue;
+      const name = radios[0].getAttribute("name");
+      if (name) handledNames.add(name);
+
+      if (Array.from(radios).some((r) => r.checked)) continue;
+
+      const label = (
+        fs.querySelector("legend")?.textContent ||
+        fs.querySelector("label, span")?.textContent ||
+        ""
+      ).toLowerCase();
+
+      const smartPick = pickSmartRadio(radios, label);
+      if (smartPick) {
+        smartPick.click();
+        smartPick.dispatchEvent(new Event("change", { bubbles: true }));
+        filled++;
+      } else if (fillRadioGroup(radios)) {
+        filled++;
+      }
+    }
+
+    const groups = new Map();
+    for (const r of modal.querySelectorAll("input[type='radio']")) {
+      const name = r.getAttribute("name");
+      if (!name || handledNames.has(name)) continue;
+      if (!groups.has(name)) groups.set(name, []);
+      groups.get(name).push(r);
+    }
+
+    for (const [, radios] of groups) {
+      if (radios.some((r) => r.checked)) continue;
+      if (fillRadioGroup(radios)) filled++;
+    }
+
+    return filled;
+  }
+
+  function pickSmartRadio(radios, questionLabel) {
+    const q = questionLabel.toLowerCase();
+    let preferYes = false;
+    let preferNo = false;
+
+    for (const [keyword, answer] of Object.entries(YES_NO_DEFAULTS)) {
+      if (q.includes(keyword)) {
+        if (answer === "Yes") preferYes = true;
+        else preferNo = true;
+        break;
+      }
+    }
+
+    if (!preferYes && !preferNo) return null;
+
+    for (const r of radios) {
+      const rLabel = _getRadioLabel(r).toLowerCase();
+      if (preferYes && (rLabel === "yes" || rLabel.startsWith("yes"))) return r;
+      if (preferNo && (rLabel === "no" || rLabel.startsWith("no"))) return r;
+    }
+    return null;
+  }
+
+  function _getRadioLabel(radio) {
+    const closest = radio.closest("label");
+    if (closest) return closest.textContent.trim();
+    if (radio.id) {
+      const forLabel =
+        radio.getRootNode().querySelector(`label[for="${radio.id}"]`);
+      if (forLabel) return forLabel.textContent.trim();
+    }
+    return radio.value || "";
+  }
+
+  function fillCheckboxes(modal) {
+    let filled = 0;
+    for (const cb of modal.querySelectorAll("input[type='checkbox']")) {
+      if (cb.checked) continue;
+      const label = _getFieldLabel(cb).toLowerCase();
+      if (
+        label.includes("agree") ||
+        label.includes("terms") ||
+        label.includes("acknowledge") ||
+        label.includes("consent") ||
+        label.includes("confirm")
+      ) {
+        cb.click();
+        cb.dispatchEvent(new Event("change", { bubbles: true }));
+        filled++;
+      }
+    }
+    return filled;
+  }
+
+  async function fillLinkedInCustomDropdowns(modal) {
+    let filled = 0;
+
+    const triggers = modal.querySelectorAll(
+      '[role="combobox"], [aria-haspopup="listbox"], ' +
+      'button[aria-expanded], [class*="select"][aria-expanded]'
+    );
+
+    for (const trigger of triggers) {
+      if (trigger.tagName === "INPUT") continue;
+      if (trigger.getAttribute("aria-expanded") === "true") continue;
+
+      const container =
+        trigger.closest(".fb-dash-form-element") ||
+        trigger.closest("[class*='form-component']") ||
+        trigger.closest("[class*='form-element']") ||
+        trigger.closest("fieldset") ||
+        trigger.parentElement;
+      if (!container) continue;
+
+      const label = (
+        container.querySelector("label, legend, [class*='label']")?.textContent || ""
+      ).trim();
+      if (!label) continue;
+
+      const mapped = matchFieldToKey(label);
+      const desiredValue = mapped
+        ? resolveValue(mapped.key, _resumeData, mapped.fallback)
+        : resolveYesNoDefault(label);
+      if (!desiredValue) continue;
+
+      const currentVal = trigger.textContent?.trim();
+      if (currentVal && currentVal !== "Select an option" && currentVal !== "--") continue;
+
+      clickElement(trigger);
+      await _delay(600);
+
+      // Listbox may appear inside the shadow root
+      const sr = getShadowRoot();
+      const listbox =
+        (sr && sr.querySelector('[role="listbox"]')) ||
+        modal.querySelector('[role="listbox"]') ||
+        document.querySelector('[role="listbox"]');
+
+      if (listbox) {
+        const options = listbox.querySelectorAll('[role="option"], li');
+        let picked = false;
+        const desiredLower = desiredValue.toLowerCase();
+
+        for (const opt of options) {
+          const optText = opt.textContent.trim().toLowerCase();
+          if (optText === desiredLower || optText.includes(desiredLower) || desiredLower.includes(optText)) {
+            opt.click();
+            picked = true;
+            filled++;
+            log.info(`Custom dropdown "${label}" → "${opt.textContent.trim()}"`);
+            break;
+          }
+        }
+
+        if (!picked && options.length > 0) {
+          options[0].click();
+          filled++;
+          log.info(`Custom dropdown "${label}" → first: "${options[0].textContent.trim()}"`);
+        }
+
+        await _delay(400);
+      } else {
+        trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        await _delay(200);
+      }
+    }
+
+    return filled;
+  }
+
+  function fillRequiredWithDefaults(modal) {
+    for (const field of modal.querySelectorAll(
+      "input[required], select[required], textarea[required], [aria-required='true']"
+    )) {
+      if (field.type === "hidden" || field.type === "file") continue;
+      if (field.type === "radio" || field.type === "checkbox") continue;
+      if (field.value && field.value.trim() !== "") continue;
+
+      if (field.tagName === "SELECT") {
+        fillDropdown(field, _resumeData);
+        continue;
+      }
+
+      const label = _getFieldLabel(field);
+
+      const numericVal = resolveNumericDefault(label);
+      if (numericVal !== null) {
+        _setNativeValue(field, numericVal);
+        log.info(`Required numeric: "${label}" → "${numericVal}"`);
+        continue;
+      }
+
+      const yesNo = resolveYesNoDefault(label);
+      if (yesNo) {
+        _setNativeValue(field, yesNo);
+        log.info(`Required yesNo: "${label}" → "${yesNo}"`);
+        continue;
+      }
+
+      if (isNumericField(field)) {
+        _setNativeValue(field, "1");
+        log.info(`Required (numeric field attr): "${label}" → "1"`);
+        continue;
+      }
+
+      const defaults = {
+        number: "1",
+        tel: _resumeData?.phone || "0000000000",
+        email: _resumeData?.email || "na@na.com",
+        url: _resumeData?.linkedinUrl || "https://linkedin.com",
+      };
+      const val = defaults[field.type] || "N/A";
+      _setNativeValue(field, val);
+      log.info(`Required default: "${label}" → "${val}"`);
+    }
+  }
+
+  function resolveYesNoDefault(label) {
+    if (!label) return null;
+    const lower = label.toLowerCase();
+    for (const [keyword, answer] of Object.entries(YES_NO_DEFAULTS)) {
+      if (lower.includes(keyword)) return answer;
+    }
+    return null;
+  }
+
+  function isNumericField(field) {
+    if (field.type === "number") return true;
+    if (field.id && field.id.endsWith("-numeric")) return true;
+    const inputMode = field.getAttribute("inputmode") || "";
+    if (inputMode === "numeric" || inputMode === "decimal") return true;
+    const pattern = field.getAttribute("pattern") || "";
+    if (/\\d|decimal|number|numeric/i.test(pattern)) return true;
+    const errEl = field.closest(".fb-dash-form-element, .artdeco-text-input")
+      ?.querySelector(".artdeco-inline-feedback__message, .fb-dash-form-element__error-text");
+    if (errEl && /decimal|number/i.test(errEl.textContent)) return true;
+    return false;
+  }
+
+  function resolveNumericDefault(label) {
+    if (!label) return null;
+    const lower = label.toLowerCase();
+
+    const experiencePatterns = [
+      /experience/i,
+      /years?\s+(?:of\s+)?(?:work|professional|industry)/i,
+      /how\s+many\s+years/i,
+      /years?\s+(?:of\s+)?experience/i,
+      /years?\s+(?:do\s+you\s+have|have\s+you)/i,
+      /working\s+with/i,
+      /proficiency/i,
+    ];
+
+    for (const pat of experiencePatterns) {
+      if (pat.test(lower)) {
+        const yrs = _resumeData?.experience?.years;
+        return yrs ? String(yrs) : "1";
+      }
+    }
+
+    if (
+      lower.includes("gpa") ||
+      lower.includes("cgpa") ||
+      lower.includes("grade")
+    ) {
+      return _resumeData?.gpa || "3.5";
+    }
+
+    if (lower.includes("salary") || lower.includes("ctc") || lower.includes("compensation")) {
+      return _resumeData?.currentCtc || _resumeData?.expectedSalary || "0";
+    }
+
+    if (
+      lower.includes("decimal") ||
+      lower.includes("number") ||
+      lower.includes("numeric") ||
+      lower.includes("how many")
+    ) {
+      return "1";
+    }
+
+    return null;
+  }
+
+  // ── Typeahead ─────────────────────────────────────────────────────────────
+
+  function isTypeaheadInput(field) {
+    if (field.getAttribute("role") === "combobox") return true;
+    return !!(
+      field.closest("[class*='typeahead']") ||
+      field.closest("[class*='autocomplete']") ||
+      field.closest("[class*='text-entity-list']")
+    );
+  }
+
+  async function fillTypeahead(field, value) {
+    log.info(`Typeahead: "${_getFieldLabel(field)}" → "${value}"`);
+    field.focus();
+    _setNativeValue(field, "");
+    await _delay(300);
+    _setNativeValue(field, value);
+    await _delay(1000);
+
+    // Listbox may be in shadow DOM
+    const sr = getShadowRoot();
+    const dropdown =
+      (sr && sr.querySelector('[role="listbox"]')) ||
+      field.getRootNode().querySelector('[role="listbox"]') ||
+      document.querySelector('[role="listbox"]');
+
+    if (dropdown) {
+      const option = dropdown.querySelector("[role='option'], li");
+      if (option) {
+        option.click();
+        await _delay(400);
+        return;
+      }
+    }
+
+    field.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Enter", code: "Enter", keyCode: 13, bubbles: true,
+    }));
+    await _delay(300);
+  }
+
+  // ── Easy Apply Button Detection ───────────────────────────────────────────
+  // The Easy Apply button is in the LIGHT DOM (not shadow), so regular
+  // document.querySelector works fine here.
+
+  async function findEasyApplyButton(timeoutMs) {
+    const found = scanForEasyApply();
+    if (found) return found;
+
+    return new Promise((resolve) => {
+      let settled = false;
+
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        observer.disconnect();
+        clearTimeout(timer);
+        resolve(result);
+      };
+
+      const poll = () => {
+        const hit = scanForEasyApply();
+        if (hit) finish(hit);
+      };
+
+      const observer = new MutationObserver(poll);
+      observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["class", "aria-label", "hidden", "style"],
+      });
+
+      poll();
+
+      const timer = setTimeout(() => {
+        finish(scanForEasyApply());
+      }, timeoutMs);
+    });
+  }
+
+  function scanForEasyApply() {
+    const root = document.body || document.documentElement;
+    if (!root) return null;
+
+    for (const sel of [
+      '[aria-label*="Easy Apply" i]',
+      '[aria-label*="Apply to this job" i]',
+    ]) {
+      try {
+        for (const el of root.querySelectorAll(sel)) {
+          if (isClickable(el) && !isDisabled(el)) return el;
+        }
+      } catch {}
+    }
+
+    for (const sel of [
+      ".jobs-apply-button",
+      '[class*="jobs-apply-button"]',
+      '[class*="jobs-s-apply"]',
+    ]) {
+      try {
+        for (const el of root.querySelectorAll(sel)) {
+          if (isClickable(el) && !isDisabled(el)) return el;
+        }
+      } catch {}
+    }
+
+    for (const el of root.querySelectorAll('a, button, [role="button"]')) {
+      if (!isClickable(el) || isDisabled(el)) continue;
+      if (el.closest("header, nav, #global-nav, .global-nav")) continue;
+      const text = _normalizeText(el.textContent);
+      if (text.length > 2 && text.length < 60 && text.includes("easy apply")) {
+        return el;
+      }
+    }
+
+    for (const el of root.querySelectorAll("span, div")) {
+      const text = _normalizeText(el.textContent);
+      if (text.length > 2 && text.length < 40 && text.includes("easy apply")) {
+        const target = el.closest('a, button, [role="button"]') || el;
+        if (isClickable(target) && !isDisabled(target)) return target;
+      }
+    }
+
+    return null;
+  }
+
+  // ── Button Finder ─────────────────────────────────────────────────────────
+  // LinkedIn 2025 button classes:
+  //   Primary (Next/Submit): artdeco-button--primary
+  //   Tertiary (Dismiss):    artdeco-modal__dismiss
+  //   aria-label is the reliable identifier
+
+  function findButtonInContainer(container, labels) {
+    if (!container) return null;
+    const buttons = container.querySelectorAll("button, [role='button']");
 
     for (const label of labels) {
       const lower = label.toLowerCase();
 
-      // Try aria-label first (case-insensitive includes)
       for (const btn of buttons) {
         if (btn.disabled || !isVisible(btn)) continue;
-        const ariaLabel = (btn.getAttribute("aria-label") || "").toLowerCase();
-        if (ariaLabel.includes(lower) || ariaLabel === lower) return btn;
+        const aria = (btn.getAttribute("aria-label") || "").toLowerCase();
+        if (aria === lower || aria.includes(lower)) return btn;
       }
 
-      // Try visible text content
       for (const btn of buttons) {
         if (btn.disabled || !isVisible(btn)) continue;
-        const text = normalizeText(btn.textContent);
-        if (text === lower || text.includes(lower)) return btn;
+        const text = _normalizeText(btn.textContent);
+        if (text === lower) return btn;
       }
-    }
 
-    return null;
-  }
-
-  function findFallbackButton(modal) {
-    const labels = [
-      "Next",
-      "Continue",
-      "Review",
-      "Submit application",
-      "Submit",
-      "Save",
-    ];
-
-    for (const text of labels) {
-      const lower = text.toLowerCase();
-      const buttons = modal.querySelectorAll("button");
       for (const btn of buttons) {
         if (btn.disabled || !isVisible(btn)) continue;
-        const btnText = normalizeText(btn.textContent);
-        if (btnText === lower || btnText.includes(lower)) return btn;
+        const text = _normalizeText(btn.textContent);
+        if (text.includes(lower)) return btn;
       }
     }
     return null;
   }
 
-  // ── Status Detection ───────────────────────────────────────────────────────
+  // ── Required Fields Check ─────────────────────────────────────────────────
+
+  function hasEmptyRequiredFields(modal) {
+    for (const field of modal.querySelectorAll(
+      "input[required], select[required], textarea[required], [aria-required='true']"
+    )) {
+      if (field.type === "hidden" || field.type === "file") continue;
+
+      if (field.type === "radio") {
+        const name = field.getAttribute("name");
+        if (name) {
+          const group = modal.querySelectorAll(`input[type='radio'][name='${name}']`);
+          if (Array.from(group).some((r) => r.checked)) continue;
+        }
+        return true;
+      }
+
+      if (field.type === "checkbox") continue;
+      if (!field.value || field.value.trim() === "") return true;
+    }
+    return false;
+  }
+
+  // ── Success / Status Detection ────────────────────────────────────────────
+  // Must check BOTH light DOM and shadow DOM for success indicators.
+
+  function detectSuccess() {
+    return detectSubmissionSuccess() || detectAlreadyApplied();
+  }
 
   function detectAlreadyApplied() {
-    // Check for "Applied" badge / text on the page
+    const successTexts = [
+      "application submitted", "already applied", "your application was sent",
+      "application was submitted", "application received",
+    ];
+
     const selectors = [
-      ".artdeco-inline-feedback",
-      "[class*='applied']",
-      "[class*='success']",
-      "[class*='confirmation']",
-      "[class*='post-apply']",
+      ".artdeco-inline-feedback", "[class*='applied']", "[class*='success']",
+      "[class*='confirmation']", "[class*='post-apply']",
       ".jobs-details-top-card__apply-status",
     ];
+
+    // Check light DOM
     for (const sel of selectors) {
       for (const el of document.querySelectorAll(sel)) {
         const text = el.textContent.toLowerCase();
-        if (
-          text.includes("application submitted") ||
-          text.includes("already applied") ||
-          text.includes("your application was sent") ||
-          text.includes("application was submitted") ||
-          text.includes("application received") ||
-          text.includes("applied")
-        )
-          return true;
+        if (successTexts.some((t) => text.includes(t))) return true;
       }
     }
 
-    // Check if the Easy Apply button text changed to "Applied"
-    const btns = document.querySelectorAll(
-      ".jobs-apply-button, [class*='jobs-apply-button'], button[aria-label*='Easy Apply' i]"
-    );
-    for (const btn of btns) {
-      const text = normalizeText(btn.textContent);
-      if (text === "applied" || text.includes("applied")) return true;
+    // Check shadow DOM
+    for (const sel of selectors) {
+      for (const el of queryAllShadow(sel)) {
+        const text = el.textContent.toLowerCase();
+        if (successTexts.some((t) => text.includes(t))) return true;
+      }
     }
 
-    // Check page body text
-    const pageText = (document.body?.innerText || "").toLowerCase();
-    if (
-      pageText.includes("your application was sent") ||
-      pageText.includes("application submitted")
-    )
-      return true;
+    for (const btn of document.querySelectorAll(
+      '[aria-label*="Easy Apply" i]'
+    )) {
+      if (_normalizeText(btn.textContent).includes("applied")) return true;
+    }
 
     return false;
   }
 
   function detectSubmissionSuccess() {
-    // Check for LinkedIn's post-apply confirmation UI elements
     const successSelectors = [
-      ".artdeco-inline-feedback--success",
-      ".jpac-modal-confirm",
-      "[class*='post-apply']",
-      "[data-test-modal-close-btn]",
-      ".artdeco-modal [class*='success']",
-      ".jobs-post-apply-modal",
-      "[class*='post-apply-modal']",
-      "[data-test-post-apply-modal]",
+      ".artdeco-inline-feedback--success", ".jpac-modal-confirm",
+      "[class*='post-apply']", ".jobs-post-apply-modal",
+      "[class*='post-apply-modal']", "[data-test-post-apply-modal]",
     ];
+
     for (const sel of successSelectors) {
-      for (const el of document.querySelectorAll(sel)) {
-        if (
-          el.closest(".artdeco-modal") ||
-          el.closest("[role='dialog']") ||
-          el.closest("body")
-        )
-          return true;
-      }
+      if (document.querySelector(sel)) return true;
+      if (queryShadow(sel)) return true;
     }
 
-    // Check dialogs for success text
-    const dialogs = document.querySelectorAll(
-      ".artdeco-modal, [role='dialog']"
-    );
-    for (const dialog of dialogs) {
+    // Check dialogs in shadow DOM for success text
+    for (const dialog of queryAllShadow('[role="dialog"], .artdeco-modal')) {
       if (!isVisible(dialog)) continue;
       const text = dialog.textContent.toLowerCase();
       if (
         text.includes("application submitted") ||
         text.includes("application was sent") ||
         text.includes("your application has been submitted") ||
-        text.includes("application was submitted") ||
-        text.includes("application received") ||
-        text.includes("your application was sent")
-      )
-        return true;
+        text.includes("application received")
+      ) return true;
     }
 
     return false;
   }
 
-  // ── Utilities ──────────────────────────────────────────────────────────────
+  // ── UI Helpers ────────────────────────────────────────────────────────────
 
-  function normalizeText(str) {
+  function dismissPostSubmitDialog() {
+    setTimeout(() => {
+      // Check shadow DOM first (where the modal lives)
+      for (const btn of queryAllShadow(
+        'button[aria-label="Dismiss"], button[aria-label="Done"], ' +
+        'button[aria-label="Close"], .artdeco-modal__dismiss'
+      )) {
+        if (isVisible(btn)) { btn.click(); return; }
+      }
+      // Fallback to light DOM
+      for (const btn of document.querySelectorAll(
+        'button[aria-label="Dismiss"], button[aria-label="Done"], ' +
+        'button[aria-label="Close"]'
+      )) {
+        if (isVisible(btn)) { btn.click(); return; }
+      }
+    }, 1500);
+  }
+
+  function handleDiscardDialog(modal) {
+    const text = (modal.textContent || "").toLowerCase();
+    if (
+      text.includes("discard") &&
+      (text.includes("unsaved") || text.includes("are you sure"))
+    ) {
+      const discardBtn = findButtonInContainer(modal, ["Discard"]);
+      if (discardBtn) {
+        log.info("Dismissing discard dialog");
+        clickElement(discardBtn);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // ── Core Utilities ────────────────────────────────────────────────────────
+
+  function _delay(ms) {
+    return typeof delay === "function" ? delay(ms) : new Promise((r) => setTimeout(r, ms));
+  }
+
+  function _normalizeText(str) {
     return (str || "").replace(/\s+/g, " ").trim().toLowerCase();
   }
 
   function isVisible(el) {
     if (!el) return false;
-    if (el.offsetParent === null && el.style?.position !== "fixed") return false;
-    const style = getComputedStyle(el);
-    return style.display !== "none" && style.visibility !== "hidden";
+    const win = el.ownerDocument?.defaultView || window;
+    if (!win) return false;
+    try {
+      const style = win.getComputedStyle(el);
+      if (style.display === "none" || style.visibility === "hidden") return false;
+      if (Number(style.opacity) === 0) return false;
+    } catch { return false; }
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
   }
 
-  function safeClickElement(el) {
-    if (!el) return;
+  function isClickable(el) {
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  function isDisabled(el) {
+    if (!el) return true;
+    return el.disabled || el.getAttribute("aria-disabled") === "true";
+  }
+
+  function describeEl(el) {
+    return {
+      tag: el.tagName,
+      text: (el.textContent || "").trim().slice(0, 80),
+      class: (el.className?.toString?.() || "").slice(0, 150),
+      aria: el.getAttribute("aria-label"),
+      id: el.id || null,
+    };
+  }
+
+  function clickElement(el) {
+    if (!el) {
+      log.error("clickElement: null element!");
+      return;
+    }
+
     el.scrollIntoView({ block: "center", behavior: "instant" });
-    // Use both click methods for reliability
+
+    const rect = el.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const win = el.ownerDocument?.defaultView || window;
+
+    const opts = {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      view: win,
+      clientX: x,
+      clientY: y,
+      screenX: x,
+      screenY: y,
+      button: 0,
+      buttons: 1,
+    };
+
+    el.dispatchEvent(new PointerEvent("pointerdown", { ...opts, pointerId: 1 }));
+    el.dispatchEvent(new MouseEvent("mousedown", opts));
+    el.dispatchEvent(new PointerEvent("pointerup", { ...opts, pointerId: 1 }));
+    el.dispatchEvent(new MouseEvent("mouseup", opts));
+    el.dispatchEvent(new MouseEvent("click", opts));
     el.click();
-    el.dispatchEvent(
-      new MouseEvent("click", {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-      })
-    );
   }
 
-  function dismissPostSubmit() {
-    setTimeout(() => {
-      const btns = document.querySelectorAll(
-        'button[aria-label="Dismiss"], [data-test-modal-close-btn], ' +
-          'button[aria-label="Done"], button[aria-label="Close"]'
-      );
-      for (const btn of btns) {
-        if (isVisible(btn)) {
-          btn.click();
-          break;
-        }
-      }
-    }, 1500);
-  }
-
-  function dismissModal(modal) {
-    if (!modal) return;
-    const closeBtn = modal.querySelector(
-      'button[aria-label="Dismiss"], button[aria-label="Close"], ' +
-        "[data-test-modal-close-btn]"
-    );
-    if (closeBtn) closeBtn.click();
-  }
-
-  function dismissErrors(modal) {
-    // Click "Discard" if an unsaved changes dialog appears
-    const discardBtn = findButtonInModal(modal, ["Discard"]);
-    if (discardBtn) {
-      log.info("Dismissing unsaved changes dialog");
-      safeClickElement(discardBtn);
+  function _setNativeValue(el, value) {
+    if (typeof setNativeValue === "function") {
+      setNativeValue(el, value);
+    } else {
+      const setter =
+        Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value")?.set ||
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      if (setter) setter.call(el, value);
+      else el.value = value;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
     }
   }
 
-  function _delay(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  function _getFieldLabel(field) {
+    const ariaLabel = field.getAttribute("aria-label");
+    if (ariaLabel) return ariaLabel;
+
+    const root = field.getRootNode();
+
+    const id = field.id;
+    if (id) {
+      const lbl = root.querySelector(`label[for="${id}"]`);
+      if (lbl) return lbl.textContent.trim();
+    }
+
+    const parent = field.closest("label");
+    if (parent) return parent.textContent.trim();
+
+    const wrapper =
+      field.closest(".fb-dash-form-element") ||
+      field.closest("[class*='form-component']") ||
+      field.closest("[class*='form-element']") ||
+      field.closest("[data-test-form-element]") ||
+      field.closest("fieldset") ||
+      field.closest("[class*='field']") ||
+      field.closest(".jobs-easy-apply-form-element");
+
+    if (wrapper) {
+      const lbl =
+        wrapper.querySelector("label") ||
+        wrapper.querySelector("legend") ||
+        wrapper.querySelector("[class*='label']") ||
+        wrapper.querySelector("[data-test-form-element-label]");
+      if (lbl) return lbl.textContent.trim();
+    }
+
+    return field.getAttribute("placeholder") || field.getAttribute("name") || "";
+  }
+
+  function ensurePageLoaded() {
+    if (document.readyState === "complete") return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = () => resolve();
+      window.addEventListener("load", done, { once: true });
+      document.addEventListener("readystatechange", () => {
+        if (document.readyState === "complete") done();
+      });
+    });
+  }
+
+  function withTimeout(promise, ms) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (detectSuccess()) resolve({ success: true, message: "success_at_timeout" });
+        else reject(new Error("Apply flow timed out"));
+      }, ms);
+      promise
+        .then((r) => { clearTimeout(timer); resolve(r); })
+        .catch((e) => { clearTimeout(timer); reject(e); });
+    });
   }
 }

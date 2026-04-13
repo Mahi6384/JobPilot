@@ -211,7 +211,12 @@ async function processOneJob(application, jobUrl, platform, log) {
   log.info(`Tab ${tab.id} opened`);
 
   try {
-    await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
+    const isLinkedInJob = /linkedin\.com/i.test(jobUrl);
+    if (isLinkedInJob) {
+      await waitForLinkedInTabSettled(tab.id, TAB_LOAD_TIMEOUT_MS);
+    } else {
+      await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
+    }
     log.step("tabLoad", "complete");
 
     await delay(2500);
@@ -589,6 +594,25 @@ function waitForTabComplete(tabId, timeoutMs) {
 
     chrome.tabs.onUpdated.addListener(listener);
   });
+}
+
+/** LinkedIn SPA: first "complete" can be shell-only; wait for real linkedin.com URL. */
+async function waitForLinkedInTabSettled(tabId, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const t = await chrome.tabs.get(tabId);
+      const url = t.url || "";
+      if (
+        t.status === "complete" &&
+        /linkedin\.com/i.test(url) &&
+        !url.startsWith("chrome://")
+      ) {
+        return;
+      }
+    } catch (_) {}
+    await delay(120);
+  }
 }
 
 // ── Broadcast ────────────────────────────────────────────────────────────────

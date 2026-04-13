@@ -23,7 +23,22 @@ const app = express();
 // Middleware
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-app.use(cors());
+const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    "https://jobpilot-wheat.vercel.app",
+    "http://localhost:5173",
+].filter(Boolean);
+
+app.use(cors({
+    origin(origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error("Not allowed by CORS"));
+        }
+    },
+    credentials: true,
+}));
 
 // Routes
 app.use("/api/auth", authRoutes);

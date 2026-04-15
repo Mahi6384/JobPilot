@@ -2,109 +2,338 @@
 <html>
   <head>
     <meta charset="UTF-8" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
+
       body {
-        width: 360px;
+        width: 370px;
         padding: 20px;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        background: #0f172a;
-        color: #e2e8f0;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        background: #0a0a0f;
+        color: #e5e7eb;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
-      .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-      .header-left { display: flex; align-items: center; gap: 8px; }
-      .header h1 { font-size: 18px; font-weight: 700; color: #f8fafc; }
+
+      /* ── Mesh background ──────────────────────────────────── */
+      body::before {
+        content: '';
+        position: fixed;
+        top: -40%;
+        left: -20%;
+        width: 70%;
+        height: 70%;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
+        filter: blur(40px);
+        pointer-events: none;
+        z-index: 0;
+      }
+      body::after {
+        content: '';
+        position: fixed;
+        bottom: -30%;
+        right: -20%;
+        width: 60%;
+        height: 60%;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(168, 85, 247, 0.04) 0%, transparent 70%);
+        filter: blur(40px);
+        pointer-events: none;
+        z-index: 0;
+      }
+      body > * { position: relative; z-index: 1; }
+
+      /* ── Header ───────────────────────────────────────────── */
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+      }
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .logo-icon {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #6366f1 0%, #3b82f6 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .logo-icon svg {
+        width: 16px;
+        height: 16px;
+        fill: none;
+        stroke: white;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .header h1 {
+        font-size: 17px;
+        font-weight: 700;
+        background: linear-gradient(135deg, #818cf8 0%, #6366f1 50%, #a855f7 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
       .badge {
-        font-size: 10px; background: #3b82f6; color: white;
-        padding: 2px 8px; border-radius: 10px; font-weight: 600;
+        font-size: 10px;
+        background: rgba(99, 102, 241, 0.15);
+        color: #818cf8;
+        padding: 2px 8px;
+        border-radius: 20px;
+        font-weight: 600;
+        border: 1px solid rgba(99, 102, 241, 0.2);
       }
       .badge-auto {
-        font-size: 10px; background: #059669; color: white;
-        padding: 2px 8px; border-radius: 10px; font-weight: 600;
-        animation: pulse 2s infinite;
+        font-size: 10px;
+        background: rgba(16, 185, 129, 0.12);
+        color: #34d399;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-weight: 600;
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        animation: pulseGlow 2s ease-in-out infinite;
       }
-      @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.6; }
+      @keyframes pulseGlow {
+        0%, 100% { opacity: 1; box-shadow: 0 0 6px rgba(16, 185, 129, 0.15); }
+        50% { opacity: 0.7; box-shadow: 0 0 12px rgba(16, 185, 129, 0.25); }
       }
 
+      /* ── Inputs ───────────────────────────────────────────── */
       input {
-        width: 100%; padding: 10px 12px; margin: 6px 0;
-        background: #1e293b; border: 1px solid #334155;
-        border-radius: 8px; color: #f1f5f9; font-size: 14px;
-        outline: none; transition: border-color 0.2s;
+        width: 100%;
+        padding: 10px 14px;
+        margin: 5px 0;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        color: #f1f5f9;
+        font-size: 13px;
+        font-family: inherit;
+        outline: none;
+        transition: all 0.2s ease;
       }
-      input:focus { border-color: #3b82f6; }
-      input::placeholder { color: #64748b; }
+      input:hover { border-color: rgba(255, 255, 255, 0.15); }
+      input:focus {
+        border-color: rgba(99, 102, 241, 0.5);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+      }
+      input::placeholder { color: rgba(255, 255, 255, 0.25); }
 
+      /* ── Buttons ──────────────────────────────────────────── */
       button {
-        width: 100%; padding: 10px; border: none; border-radius: 8px;
-        font-size: 14px; font-weight: 600; cursor: pointer;
-        transition: all 0.2s; margin-top: 8px;
-      }
-      .btn-primary { background: #3b82f6; color: white; }
-      .btn-primary:hover { background: #2563eb; }
-      .btn-primary:disabled { background: #1e40af; opacity: 0.6; cursor: not-allowed; }
-      .btn-secondary {
-        background: #334155; color: #e2e8f0; font-size: 12px;
+        width: 100%;
+        padding: 10px;
+        border: none;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        transition: all 0.2s ease;
         margin-top: 8px;
       }
-      .btn-secondary:hover { background: #475569; }
-      .btn-danger { background: #991b1b; color: #fca5a5; font-size: 12px; }
-      .btn-danger:hover { background: #7f1d1d; }
+      button:active { transform: scale(0.97); }
 
-      .error { color: #f87171; font-size: 12px; margin-top: 8px; }
+      .btn-primary {
+        background: #6366f1;
+        color: white;
+        box-shadow: 0 0 16px -4px rgba(99, 102, 241, 0.3);
+      }
+      .btn-primary:hover {
+        background: #4f46e5;
+        box-shadow: 0 0 24px -4px rgba(99, 102, 241, 0.4);
+      }
+      .btn-primary:disabled {
+        background: #3730a3;
+        opacity: 0.5;
+        cursor: not-allowed;
+        box-shadow: none;
+        transform: none;
+      }
+
+      .btn-secondary {
+        background: rgba(255, 255, 255, 0.05);
+        color: #d1d5db;
+        font-size: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.15);
+      }
+
+      .btn-danger {
+        background: rgba(239, 68, 68, 0.08);
+        color: #f87171;
+        font-size: 12px;
+        border: 1px solid rgba(239, 68, 68, 0.15);
+      }
+      .btn-danger:hover {
+        background: rgba(239, 68, 68, 0.15);
+        border-color: rgba(239, 68, 68, 0.25);
+      }
+
+      /* ── States ───────────────────────────────────────────── */
+      .error {
+        color: #f87171;
+        font-size: 12px;
+        margin-top: 8px;
+        padding: 8px 12px;
+        background: rgba(239, 68, 68, 0.08);
+        border: 1px solid rgba(239, 68, 68, 0.15);
+        border-radius: 8px;
+      }
       .hidden { display: none; }
 
+      /* ── Cards / glass panels ─────────────────────────────── */
       .card {
-        background: #1e293b; border: 1px solid #334155;
-        border-radius: 10px; padding: 12px; margin: 8px 0;
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        padding: 14px;
+        margin: 10px 0;
       }
-      .card-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-      .card-value { font-size: 15px; color: #f1f5f9; font-weight: 600; }
+      .card-label {
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0.35);
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      .card-value {
+        font-size: 14px;
+        color: #f1f5f9;
+        font-weight: 600;
+      }
 
-      .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 8px 0; }
-      .stat-item { text-align: center; padding: 8px; background: #0f172a; border-radius: 8px; }
-      .stat-number { font-size: 20px; font-weight: 700; }
-      .stat-label { font-size: 10px; color: #64748b; margin-top: 2px; }
+      /* ── Stats grid ───────────────────────────────────────── */
+      .stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 8px;
+        margin: 10px 0;
+      }
+      .stat-item {
+        text-align: center;
+        padding: 12px 8px;
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 10px;
+        transition: all 0.2s ease;
+      }
+      .stat-item:hover {
+        background: rgba(255, 255, 255, 0.04);
+        border-color: rgba(255, 255, 255, 0.1);
+      }
+      .stat-number { font-size: 22px; font-weight: 700; }
+      .stat-label { font-size: 10px; color: rgba(255, 255, 255, 0.35); margin-top: 3px; font-weight: 500; }
+
       .text-green { color: #34d399; }
       .text-red { color: #f87171; }
       .text-yellow { color: #fbbf24; }
-      .text-gray { color: #94a3b8; }
+      .text-gray { color: #9ca3af; }
 
-      .user-row { font-size: 13px; color: #94a3b8; margin-bottom: 12px; }
-      .user-row strong { color: #f1f5f9; }
+      /* ── User row ─────────────────────────────────────────── */
+      .user-row {
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.4);
+        margin-bottom: 14px;
+      }
+      .user-row strong { color: #f1f5f9; font-weight: 600; }
 
+      /* ── Current job indicator ─────────────────────────────── */
       .current-job {
-        font-size: 13px; color: #93c5fd; line-height: 1.4;
-        padding: 8px 10px; background: #1e3a5f; border-radius: 8px;
-        border-left: 3px solid #3b82f6; margin: 8px 0;
+        font-size: 12px;
+        color: #818cf8;
+        line-height: 1.5;
+        padding: 10px 12px;
+        background: rgba(99, 102, 241, 0.06);
+        border-radius: 10px;
+        border-left: 3px solid #6366f1;
+        margin: 10px 0;
+        border-top: 1px solid rgba(99, 102, 241, 0.1);
+        border-right: 1px solid rgba(99, 102, 241, 0.1);
+        border-bottom: 1px solid rgba(99, 102, 241, 0.1);
       }
+      .current-job strong { color: #a5b4fc; }
 
+      /* ── Toggle ───────────────────────────────────────────── */
       .toggle-row {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 8px 0; font-size: 13px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 0;
+        font-size: 12px;
       }
-      .toggle-row label { color: #94a3b8; }
+      .toggle-row label { color: rgba(255, 255, 255, 0.3); font-weight: 500; }
+
       .toggle {
-        position: relative; width: 36px; height: 20px;
-        background: #334155; border-radius: 10px; cursor: pointer;
-        transition: background 0.2s;
+        position: relative;
+        width: 36px;
+        height: 20px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: 1px solid rgba(255, 255, 255, 0.08);
       }
-      .toggle.active { background: #3b82f6; }
+      .toggle.active {
+        background: #6366f1;
+        border-color: rgba(99, 102, 241, 0.5);
+        box-shadow: 0 0 10px rgba(99, 102, 241, 0.25);
+      }
       .toggle::after {
-        content: ''; position: absolute; top: 2px; left: 2px;
-        width: 16px; height: 16px; background: white;
-        border-radius: 50%; transition: transform 0.2s;
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 14px;
+        height: 14px;
+        background: white;
+        border-radius: 50%;
+        transition: transform 0.2s ease;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
       }
       .toggle.active::after { transform: translateX(16px); }
 
+      /* ── Footer ───────────────────────────────────────────── */
       .ext-id {
-        font-size: 10px; color: #475569; word-break: break-all;
-        margin-top: 8px; text-align: center;
+        font-size: 9px;
+        color: rgba(255, 255, 255, 0.15);
+        word-break: break-all;
+        margin-top: 10px;
+        text-align: center;
+        font-family: 'SF Mono', 'Fira Code', monospace;
       }
 
-      .divider { border: none; border-top: 1px solid #1e293b; margin: 12px 0; }
+      .divider {
+        border: none;
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        margin: 14px 0;
+      }
+
+      /* ── Animation ────────────────────────────────────────── */
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      #loginView, #dashView:not(.hidden) {
+        animation: fadeIn 0.3s ease-out;
+      }
     </style>
   </head>
   <body>
@@ -112,11 +341,17 @@
     <div id="loginView">
       <div class="header">
         <div class="header-left">
+          <div class="logo-icon">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 3l1.5 3.5L17 8l-3.5 1.5L12 13l-1.5-3.5L7 8l3.5-1.5L12 3z" />
+              <path d="M18 14l1 2 2 1-2 1-1 2-1-2-2-1 2-1 1-2z" />
+            </svg>
+          </div>
           <h1>JobPilot</h1>
           <span class="badge">v3.0</span>
         </div>
       </div>
-      <input type="email" id="emailInput" placeholder="Email" />
+      <input type="email" id="emailInput" placeholder="Email address" />
       <input type="password" id="passwordInput" placeholder="Password" />
       <button id="loginBtn" class="btn-primary">Login</button>
       <p id="errorMsg" class="error hidden"></p>
@@ -126,8 +361,13 @@
     <div id="dashView" class="hidden">
       <div class="header">
         <div class="header-left">
+          <div class="logo-icon">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 3l1.5 3.5L17 8l-3.5 1.5L12 13l-1.5-3.5L7 8l3.5-1.5L12 3z" />
+              <path d="M18 14l1 2 2 1-2 1-1 2-1-2-2-1 2-1 1-2z" />
+            </svg>
+          </div>
           <h1>JobPilot</h1>
-          <span class="badge">v3.0</span>
         </div>
         <span id="autoBadge" class="badge-auto">AUTO</span>
       </div>
@@ -158,16 +398,16 @@
         </div>
       </div>
 
-      <hr class="divider" />
-
-      <div class="toggle-row">
-        <label>Development Mode</label>
-        <div id="devToggle" class="toggle"></div>
-      </div>
-
       <button id="logoutBtn" class="btn-danger">Disconnect</button>
 
       <div class="ext-id" id="extId"></div>
+    </div>
+
+    <hr class="divider" />
+
+    <div class="toggle-row">
+      <label>Development Mode</label>
+      <div id="devToggle" class="toggle"></div>
     </div>
 
     <script src="../utils/storage.js"></script>

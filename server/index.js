@@ -12,10 +12,10 @@ const applicationRoutes = require("./routes/applicationRoutes");
 dotenv.config();
 
 try {
-    validateEnv();
+  validateEnv();
 } catch (error) {
-    logger.error("Environment validation failed", error);
-    process.exit(1);
+  logger.error("Environment validation failed", error);
+  process.exit(1);
 }
 
 const app = express();
@@ -24,21 +24,24 @@ const app = express();
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 const allowedOrigins = [
-    process.env.FRONTEND_URL,
-    "https://jobpilot-wheat.vercel.app",
-    "http://localhost:5173",
+  process.env.FRONTEND_URL,
+  "https://jobpilot-wheat.vercel.app",
+  "http://localhost:5173",
+  "chrome-extension://emjjjomjhdlnbdlggkdchagheghfeenk",
 ].filter(Boolean);
 
-app.use(cors({
+app.use(
+  cors({
     origin(origin, callback) {
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error("Not allowed by CORS"));
-        }
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
     },
     credentials: true,
-}));
+  }),
+);
 
 // Routes
 app.use("/api/auth", authRoutes);
@@ -54,31 +57,31 @@ const PORT = process.env.PORT || 5000;
 
 // MongoDB connection with retry logic
 const connectDB = async () => {
-    try {
-        const options = {
-            serverSelectionTimeoutMS: 5000,
-            socketTimeoutMS: 45000,
-        };
+  try {
+    const options = {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    };
 
-        await mongoose.connect(process.env.MONGODB_URI, options);
-        logger.info("MongoDB connected successfully!");
-    } catch (error) {
-        logger.error("MongoDB connection failed", error);
-        setTimeout(connectDB, 5000);
-    }
+    await mongoose.connect(process.env.MONGODB_URI, options);
+    logger.info("MongoDB connected successfully!");
+  } catch (error) {
+    logger.error("MongoDB connection failed", error);
+    setTimeout(connectDB, 5000);
+  }
 };
 
 // Handle MongoDB connection events
 mongoose.connection.on("disconnected", () => {
-    logger.warn("MongoDB disconnected. Attempting to reconnect...");
+  logger.warn("MongoDB disconnected. Attempting to reconnect...");
 });
 
 mongoose.connection.on("error", (error) => {
-    logger.error("MongoDB connection error", error);
+  logger.error("MongoDB connection error", error);
 });
 
 // Start server
 app.listen(PORT, () => {
-    logger.info(`Server is running at: http://localhost:${PORT}`);
-    connectDB();
+  logger.info(`Server is running at: http://localhost:${PORT}`);
+  connectDB();
 });

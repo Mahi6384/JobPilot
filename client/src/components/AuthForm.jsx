@@ -1,33 +1,52 @@
 import React, { useState } from "react";
-import { Mail, Lock, User } from "lucide-react";
-
-const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.MODE === 'development' ? "http://localhost:5000" : "https://jobpilot-production-3ba1.up.railway.app");
-import { useNavigate } from "react-router-dom";
+import { Mail, Lock, User, ArrowRight, Sparkles } from "lucide-react";
+import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import { GoogleLogin } from "@react-oauth/google";
-import googleIcon from "../assets/googleIcon.svg";
+import { useToast } from "./ui/Toast";
+import Button from "./ui/Button";
+import Input from "./ui/Input";
 
-function AuthForm({
-  heading,
-  btnText,
-  newUser,
-  TextUnderHeading,
-  passwordDes,
-}) {
+const API_BASE =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.MODE === "development"
+    ? "http://localhost:5000"
+    : "https://jobpilot-production-3ba1.up.railway.app");
+
+function AuthForm({ btnText, newUser, passwordDes }) {
   const navigate = useNavigate();
+  const toast = useToast();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
   });
+  const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    if (errors[e.target.name]) {
+      setErrors({ ...errors, [e.target.name]: "" });
+    }
+  };
+
+  const validate = () => {
+    const newErrors = {};
+    if (newUser && !formData.name.trim()) newErrors.name = "Name is required";
+    if (!formData.email.trim()) newErrors.email = "Email is required";
+    else if (!/\S+@\S+\.\S+/.test(formData.email))
+      newErrors.email = "Enter a valid email";
+    if (!formData.password) newErrors.password = "Password is required";
+    else if (newUser && formData.password.length < 6)
+      newErrors.password = "Must be at least 6 characters";
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!validate()) return;
     setLoading(true);
 
     try {
@@ -38,18 +57,13 @@ function AuthForm({
         ...(newUser && { name: formData.name }),
       });
 
-      // Store token
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
-
-      // Dispatch event to notify Navbar
       window.dispatchEvent(new Event("authChange"));
-
-      // Redirect to onboarding after successful auth
+      toast.success(newUser ? "Account created!" : "Welcome back!");
       navigate("/onboarding");
     } catch (error) {
-      console.error("Auth error:", error);
-      alert(error.response?.data?.message || "Authentication failed");
+      toast.error(error.response?.data?.message || "Authentication failed");
     } finally {
       setLoading(false);
     }
@@ -58,174 +72,210 @@ function AuthForm({
   const handleGoogleAuthSuccess = async (credentialResponse) => {
     setLoading(true);
     try {
-      const response = await axios.post(
-        `${API_BASE}/api/auth/google`,
-        {
-          credential: credentialResponse.credential,
-        },
-      );
+      const response = await axios.post(`${API_BASE}/api/auth/google`, {
+        credential: credentialResponse.credential,
+      });
 
-      // Store token
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("user", JSON.stringify(response.data.user));
-
-      // Dispatch event to notify Navbar
       window.dispatchEvent(new Event("authChange"));
-
-      // Redirect to onboarding after successful auth
+      toast.success("Signed in with Google!");
       navigate("/onboarding");
     } catch (error) {
-      console.error("Google Auth error:", error);
-      alert(error.response?.data?.message || "Google Authentication failed");
+      toast.error(error.response?.data?.message || "Google sign-in failed");
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleAuthError = () => {
-    console.error("Google Login Failed");
-    alert("Login Failed. Please try again.");
+    toast.error("Google sign-in failed. Please try again.");
   };
 
   return (
-    <div className="font-montserrat min-h-screen w-full bg-gray-950 flex flex-col justify-center">
-      <div className="h-[calc(100vh-5rem)] w-full flex items-center justify-center overflow-hidden">
-        <div className="w-[85%] max-w-5xl text-white flex h-[85%] max-h-[650px] rounded-3xl bg-stone-800/20 shadow-blue-900 shadow-[0_4px_40px_0px_rgba(0,0,0,0.1)]">
-          <section className="flex flex-col flex-1 min-w-[320px] p-8 md:p-10 justify-center">
-            {/* <h1 className="text-3xl font-bold leading-tight mt-2 select-none">
-              {heading}
-            </h1>
-            <p className="text-sm font-light opacity-85 mb-8 select-none">
-              {TextUnderHeading}
-            </p> */}
+    <div className="min-h-screen w-full bg-surface-primary flex">
+      <div className="bg-mesh" />
 
-            <form className="w-full" onSubmit={handleSubmit}>
-              {newUser && (
-                <div className="flex flex-col mb-4">
-                  <label
-                    htmlFor="name"
-                    className="text-sm font-normal mb-1 select-none"
-                  >
-                    Name
-                  </label>
-                  <input
-                    id="name"
-                    name="name"
-                    type="text"
-                    value={formData.name}
-                    onChange={handleChange}
-                    placeholder="Mahi Jain"
-                    className="rounded-md px-4 py-1.5 text-black placeholder-gray-500 shadow-inner focus:shadow-[inset_0_0_10px_#131a25]"
-                  />
+      {/* Left: Branding panel (hidden on mobile) */}
+      <div className="hidden lg:flex flex-1 relative overflow-hidden items-center justify-center p-12">
+        {/* Gradient orbs */}
+        <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-brand-500/10 rounded-full blur-[100px] animate-float" />
+        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-accent-500/8 rounded-full blur-[80px] animate-float animate-delay-300" />
+
+        <div className="relative z-10 max-w-md">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="w-10 h-10 rounded-xl bg-gradient-brand flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <span className="text-2xl font-bold text-gradient">JobPilot</span>
+          </div>
+
+          <h1 className="text-4xl font-bold text-white leading-tight mb-6">
+            Sit back and
+            <br />
+            <span className="text-gradient">apply smart</span>
+          </h1>
+
+          <p className="text-gray-400 leading-relaxed mb-8">
+            Stop spending hours on job applications. JobPilot matches you with
+            the best opportunities and auto-applies across platforms. You focus
+            on interviews, we handle the hunt.
+          </p>
+
+          <div className="space-y-4">
+            {[
+              "AI-powered job matching",
+              "One-click multi-platform apply",
+              "Real-time application tracking",
+            ].map((feature) => (
+              <div key={feature} className="flex items-center gap-3">
+                <div className="w-5 h-5 rounded-full bg-brand-500/20 flex items-center justify-center">
+                  <div className="w-2 h-2 rounded-full bg-brand-400" />
                 </div>
-              )}
-              <div className="flex flex-col mb-4">
-                <label
-                  htmlFor="email"
-                  className="text-sm font-normal mb-1 select-none"
-                >
-                  Email
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  placeholder="ypuram@gmail.com"
-                  required
-                  className="rounded-md px-4 py-1.5 text-black placeholder-gray-500 shadow-inner focus:shadow-[inset_0_0_10px_#131a25]"
-                />
+                <span className="text-sm text-gray-300">{feature}</span>
               </div>
-              <div className="flex flex-col mb-4">
-                <label
-                  htmlFor="passwd"
-                  className="text-sm font-normal mb-1 select-none"
-                >
-                  {passwordDes}
-                </label>
-                <input
-                  id="passwd"
-                  name="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  placeholder="Password"
-                  required
-                  className="rounded-md px-4 py-1.5 text-black placeholder-gray-500 shadow-inner focus:shadow-[inset_0_0_10px_#131a25]"
-                />
-                {!newUser && (
-                  <a
-                    href="#"
-                    className="text-xs text-white underline mt-1 self-end select-none"
-                  >
-                    Forgot Password
-                  </a>
-                )}
-              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="bg-blue-900 py-2.5 rounded-md font-medium text-base shadow-md w-full transition-colors duration-300 disabled:bg-gray-600 mt-2"
-              >
-                {loading ? "Processing..." : btnText}
-              </button>
-            </form>
+      {/* Right: Form */}
+      <div className="flex-1 flex items-center justify-center p-6 lg:p-12">
+        <div className="w-full max-w-md">
+          {/* Mobile logo */}
+          <div className="flex items-center gap-3 mb-8 lg:hidden">
+            <div className="w-8 h-8 rounded-lg bg-gradient-brand flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-white" />
+            </div>
+            <span className="text-xl font-bold text-gradient">JobPilot</span>
+          </div>
 
-            <div className="flex justify-center gap-7 my-5">
-              <GoogleLogin
-                onSuccess={handleGoogleAuthSuccess}
-                onError={handleGoogleAuthError}
-                useOneTap
-                theme="filled_black"
-                shape="circle"
+          <h2 className="text-2xl font-bold text-white mb-2">
+            {newUser ? "Create your account" : "Welcome back"}
+          </h2>
+          <p className="text-gray-400 text-sm mb-8">
+            {newUser
+              ? "Start automating your job search today"
+              : "Sign in to continue your job search"}
+          </p>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {newUser && (
+              <Input
+                id="name"
+                name="name"
+                type="text"
+                label="Full Name"
+                placeholder="Your full name"
+                icon={User}
+                value={formData.name}
+                onChange={handleChange}
+                error={errors.name}
               />
-            </div>
-
-            {newUser ? (
-              <a
-                href="/login"
-                className="text-center text-xs underline opacity-60 hover:opacity-90 select-none"
-              >
-                Already an user? Login
-              </a>
-            ) : (
-              <a
-                href="/signup"
-                className="text-center text-xs underline opacity-60 hover:opacity-90 select-none"
-              >
-                New user? Create an account
-              </a>
             )}
-          </section>
-          <section className="flex flex-col justify-center flex-1 min-w-[350px] bg-[#131a25]/10 p-8 md:p-10 text-white rounded-tr-xl rounded-br-xl relative">
-            <a
-              href="/guide"
-              className="absolute top-8 right-8 text-sm underline opacity-60 hover:opacity-100 transition-opacity select-none"
+
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              label="Email"
+              placeholder="you@example.com"
+              icon={Mail}
+              value={formData.email}
+              onChange={handleChange}
+              error={errors.email}
+              required
+            />
+
+            <Input
+              id="passwd"
+              name="password"
+              type="password"
+              label={passwordDes || "Password"}
+              placeholder="••••••••"
+              icon={Lock}
+              value={formData.password}
+              onChange={handleChange}
+              error={errors.password}
+              required
+            />
+
+            {!newUser && (
+              <div className="text-right">
+                <a
+                  href="#"
+                  className="text-xs text-gray-400 hover:text-brand-400 transition-colors"
+                >
+                  Forgot password?
+                </a>
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              loading={loading}
+              className="w-full"
+              size="lg"
+              iconRight={ArrowRight}
             >
-              how to use JobPilot?
-            </a>
-            <div>
-              <h2 className="text-3xl font-bold mb-6 select-none leading-tight">
-                Sit back and
-                <br />
-                Apply smart with{" "}
-                <span className="bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">
-                  JobPilot
-                </span>
-              </h2>
-              <blockquote>
-                <p className="text-sm font-light opacity-85 leading-relaxed mb-4 select-none">
-                  Tired of spending hours filling out job applications? Let
-                  JobPilot do the heavy lifting. Our AI agent applies to
-                  top-matching jobs every day — no more repeating the same
-                  details or missing deadlines. You focus on interviews, we'll
-                  handle the hunt. Sit back. Apply smart. Land faster.
-                </p>
-              </blockquote>
-            </div>
-          </section>
+              {btnText}
+            </Button>
+          </form>
+
+          {/* Divider */}
+          <div className="flex items-center gap-4 my-6">
+            <div className="flex-1 h-px bg-white/10" />
+            <span className="text-xs text-gray-500">or continue with</span>
+            <div className="flex-1 h-px bg-white/10" />
+          </div>
+
+          {/* Google */}
+          <div className="flex justify-center">
+            <GoogleLogin
+              onSuccess={handleGoogleAuthSuccess}
+              onError={handleGoogleAuthError}
+              useOneTap
+              theme="filled_black"
+              shape="pill"
+              size="large"
+              width="100%"
+            />
+          </div>
+
+          {/* Switch link */}
+          <p className="text-center text-sm text-gray-400 mt-8">
+            {newUser ? (
+              <>
+                Already have an account?{" "}
+                <Link
+                  to="/login"
+                  className="text-brand-400 hover:text-brand-300 font-medium transition-colors"
+                >
+                  Sign in
+                </Link>
+              </>
+            ) : (
+              <>
+                New to JobPilot?{" "}
+                <Link
+                  to="/signup"
+                  className="text-brand-400 hover:text-brand-300 font-medium transition-colors"
+                >
+                  Create an account
+                </Link>
+              </>
+            )}
+          </p>
+
+          {/* Guide link */}
+          <p className="text-center mt-4">
+            <Link
+              to="/guide"
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              How does JobPilot work? →
+            </Link>
+          </p>
         </div>
       </div>
     </div>

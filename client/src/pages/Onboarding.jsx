@@ -1,16 +1,24 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { Search, Sparkles } from "lucide-react";
 import StepIndicator from "../components/onboarding/StepIndicator";
 import BasicInfoStep from "../components/onboarding/BasicInfoStep";
 import CurrentPositionStep from "../components/onboarding/CurrentPositionStep";
 import JobPreferencesStep from "../components/onboarding/JobPreferencesStep";
 import SkillsResumeStep from "../components/onboarding/SkillsResumeStep";
+import Button from "../components/ui/Button";
+import { useToast } from "../components/ui/Toast";
 
-const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.MODE === 'development' ? "http://localhost:5000" : "https://jobpilot-production-3ba1.up.railway.app");
+const API_BASE =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.MODE === "development"
+    ? "http://localhost:5000"
+    : "https://jobpilot-production-3ba1.up.railway.app");
 
 function Onboarding() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({});
   const [errors, setErrors] = useState({});
@@ -18,13 +26,11 @@ function Onboarding() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [findingJobs, setFindingJobs] = useState(false);
 
-  // Get auth token
   const getAuthHeader = () => {
     const token = localStorage.getItem("token");
     return { Authorization: `Bearer ${token}` };
   };
 
-  // Fetch existing onboarding data on mount
   useEffect(() => {
     const fetchOnboardingStatus = async () => {
       try {
@@ -34,18 +40,15 @@ function Onboarding() {
 
         const { profile, onboardingStatus } = response.data;
 
-        // If already completed, redirect to home
         if (onboardingStatus === "completed") {
           navigate("/");
           return;
         }
 
-        // Populate form with existing data
         if (profile) {
           setFormData(profile);
         }
 
-        // Determine which step to start on
         if (profile.fullName && profile.phone && profile.location) {
           if (profile.currentJobTitle && profile.currentCompany) {
             if (
@@ -62,7 +65,6 @@ function Onboarding() {
         }
       } catch (error) {
         console.error("Failed to fetch onboarding status:", error);
-        // If unauthorized, redirect to login
         if (error.response?.status === 401) {
           navigate("/login");
         }
@@ -74,7 +76,6 @@ function Onboarding() {
     fetchOnboardingStatus();
   }, [navigate]);
 
-  // Validate current step
   const validateStep = () => {
     const newErrors = {};
 
@@ -119,7 +120,6 @@ function Onboarding() {
     return Object.keys(newErrors).length === 0;
   };
 
-  // Save current step data
   const saveStep = async () => {
     setLoading(true);
     try {
@@ -164,7 +164,6 @@ function Onboarding() {
         { headers: getAuthHeader() },
       );
 
-      // Update localStorage with new user data
       const user = JSON.parse(localStorage.getItem("user") || "{}");
       localStorage.setItem(
         "user",
@@ -177,7 +176,7 @@ function Onboarding() {
       return true;
     } catch (error) {
       console.error("Failed to save step:", error);
-      alert(
+      toast.error(
         error.response?.data?.message || "Failed to save. Please try again.",
       );
       return false;
@@ -186,7 +185,6 @@ function Onboarding() {
     }
   };
 
-  // Handle next button
   const handleNext = async () => {
     if (!validateStep()) return;
 
@@ -197,24 +195,23 @@ function Onboarding() {
       setCurrentStep(currentStep + 1);
       setErrors({});
     } else {
-      // Onboarding complete — show "finding jobs" screen
       setFindingJobs(true);
       window.dispatchEvent(new Event("authChange"));
     }
   };
 
-  // Poll for job search completion when finding jobs
   useEffect(() => {
     if (!findingJobs) return;
 
     const startTime = Date.now();
-    const maxWaitMs = 90000; // 90 second safety timeout
+    const maxWaitMs = 90000;
 
     const pollInterval = setInterval(async () => {
       try {
-        const response = await axios.get(`${API_BASE}/api/jobs/search-status`, {
-          headers: getAuthHeader(),
-        });
+        const response = await axios.get(
+          `${API_BASE}/api/jobs/search-status`,
+          { headers: getAuthHeader() },
+        );
 
         if (response.data.jobSearchStatus === "ready") {
           clearInterval(pollInterval);
@@ -224,7 +221,6 @@ function Onboarding() {
         console.error("Failed to poll search status:", error);
       }
 
-      // Safety timeout — navigate anyway after 90 seconds
       if (Date.now() - startTime > maxWaitMs) {
         clearInterval(pollInterval);
         navigate("/");
@@ -234,7 +230,6 @@ function Onboarding() {
     return () => clearInterval(pollInterval);
   }, [findingJobs, navigate]);
 
-  // Handle back button
   const handleBack = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
@@ -242,7 +237,6 @@ function Onboarding() {
     }
   };
 
-  // Render current step component
   const renderStep = () => {
     switch (currentStep) {
       case 1:
@@ -282,47 +276,33 @@ function Onboarding() {
     }
   };
 
-  // Show "finding jobs" screen
   if (findingJobs) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center px-4">
-        <div className="text-center max-w-md">
-          {/* Animated search icon */}
-          {/* <div className="mb-8">
-            <div className="w-24 h-24 mx-auto rounded-full bg-blue-600/20 flex items-center justify-center animate-pulse">
-              <svg
-                className="w-12 h-12 text-blue-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
+      <div className="min-h-screen bg-surface-primary flex items-center justify-center px-4">
+        <div className="bg-mesh" />
+        <div className="text-center max-w-md animate-fade-in-up relative">
+          <div className="mb-8">
+            <div className="w-20 h-20 mx-auto rounded-2xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center animate-pulse-glow">
+              <Search className="w-9 h-9 text-brand-400" />
             </div>
-          </div> */}
+          </div>
 
           <h1 className="text-3xl font-bold text-white mb-3">
             Finding Perfect Jobs For You
           </h1>
           <p className="text-gray-400 mb-8 text-lg">
             We're searching for{" "}
-            <span className="text-blue-400 font-medium">
+            <span className="text-brand-400 font-medium">
               {formData.targetJobTitle}
             </span>{" "}
-            roles that match your profile. This usually takes about a minute.
+            roles that match your profile.
           </p>
 
-          {/* Progress dots */}
           <div className="flex justify-center gap-2 mb-8">
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="w-3 h-3 rounded-full bg-blue-500"
+                className="w-2.5 h-2.5 rounded-full bg-brand-500"
                 style={{
                   animation: `pulse 1.4s ease-in-out ${i * 0.2}s infinite`,
                   opacity: 0.4,
@@ -348,52 +328,58 @@ function Onboarding() {
 
   if (initialLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-950">
-        <div className="text-white text-lg">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-surface-primary">
+        <div className="bg-mesh" />
+        <div className="flex items-center gap-3 text-gray-400">
+          <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+          <span>Loading your profile...</span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 py-8 px-4">
-      <div className="max-w-2xl mx-auto">
+    <div className="min-h-screen bg-surface-primary py-8 px-4">
+      <div className="bg-mesh" />
+      <div className="max-w-2xl mx-auto relative">
         {/* Header */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-8 animate-fade-in">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-400 text-sm font-medium mb-4">
+            <Sparkles className="w-3.5 h-3.5" />
+            Step {currentStep} of 4
+          </div>
           <h1 className="text-3xl font-bold text-white mb-2">
             Complete Your Profile
           </h1>
-          <p className="text-gray-400">Step {currentStep} of 4</p>
+          <p className="text-gray-400">
+            This helps us match you with the best opportunities
+          </p>
         </div>
 
-        {/* Step Indicator */}
         <StepIndicator currentStep={currentStep} />
 
         {/* Form Card */}
-        <div className="bg-gray-900/50 rounded-2xl p-8 shadow-xl border border-gray-800">
+        <div className="glass rounded-2xl p-8 shadow-glass animate-fade-in-up">
           {renderStep()}
 
-          {/* Navigation Buttons */}
-          <div className="flex justify-between mt-8 pt-6 border-t border-gray-800">
-            <button
+          <div className="flex justify-between mt-8 pt-6 border-t border-white/[0.06]">
+            <Button
               type="button"
+              variant="ghost"
               onClick={handleBack}
               disabled={currentStep === 1}
-              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-                currentStep === 1
-                  ? "bg-gray-800 text-gray-600 cursor-not-allowed"
-                  : "bg-gray-700 text-white hover:bg-gray-600"
-              }`}
             >
               Back
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="primary"
               onClick={handleNext}
-              disabled={loading}
-              className="px-8 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed"
+              loading={loading}
+              size="lg"
             >
-              {loading ? "Saving..." : currentStep === 4 ? "Complete" : "Next"}
-            </button>
+              {currentStep === 4 ? "Complete Setup" : "Continue"}
+            </Button>
           </div>
         </div>
       </div>

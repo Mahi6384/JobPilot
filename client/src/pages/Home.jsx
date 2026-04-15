@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Briefcase, CheckCircle, TrendingUp, Plug } from "lucide-react";
+import { Briefcase, CheckCircle, TrendingUp, ArrowRight, Sparkles } from "lucide-react";
 import api from "../utils/api";
 import StatsCard from "../components/dashboard/StatsCard";
 import JobCard from "../components/dashboard/JobCard";
 import ExtensionStatus from "../components/dashboard/ExtensionStatus";
+import Button from "../components/ui/Button";
+import { SkeletonStats, SkeletonCard } from "../components/ui/Skeleton";
 
 function Home() {
   const navigate = useNavigate();
@@ -34,113 +36,138 @@ function Home() {
     }
   };
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 17) return "Good afternoon";
+    return "Good evening";
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="h-8 w-64 bg-gray-800 rounded animate-pulse mb-4" />
-          <div className="h-4 w-96 bg-gray-800 rounded animate-pulse mb-8" />
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-            {[1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="h-32 bg-gray-800 rounded-2xl animate-pulse"
-              />
-            ))}
-          </div>
+      <div className="p-6 lg:p-8 max-w-6xl mx-auto">
+        <div className="skeleton h-8 w-64 mb-2" />
+        <div className="skeleton h-4 w-96 mb-8" />
+        <SkeletonStats
+          count={4}
+          className="grid-cols-1 md:grid-cols-2 lg:grid-cols-4 mb-10"
+        />
+        <div className="skeleton h-6 w-48 mb-4" />
+        <div className="space-y-3">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h3 className="text-3xl font-bold text-white mb-2">
-            Welcome {user?.fullName ? user.fullName.split(" ")[0] : "User"}!
-          </h3>
-          <p className="text-gray-400">
-            Here is a quick overview of your job search progress
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-          <StatsCard
-            icon={Briefcase}
-            value={dashboardData?.stats?.totalMatches || 0}
-            label="Total Matches"
-            color="blue"
-          />
-          <StatsCard
-            icon={CheckCircle}
-            value={dashboardData?.stats?.appliedToday || 0}
-            label="Applied Today"
-            color="green"
-          />
-          <StatsCard
-            icon={TrendingUp}
-            value={`${dashboardData?.stats?.successRate || 0}%`}
-            label="Success Rate"
-            color="purple"
-          />
-          <div>
-            <ExtensionStatus />
+    <div className="p-6 lg:p-8 max-w-6xl mx-auto animate-fade-in">
+      {/* Welcome header */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/10 border border-brand-500/20">
+            <Sparkles className="w-3.5 h-3.5 text-brand-400" />
+            <span className="text-xs font-medium text-brand-400">Dashboard</span>
           </div>
         </div>
+        <h1 className="text-2xl lg:text-3xl font-bold text-white mb-1">
+          {getGreeting()},{" "}
+          <span className="text-gradient">
+            {user?.fullName ? user.fullName.split(" ")[0] : "there"}
+          </span>
+        </h1>
+        <p className="text-gray-400 text-sm">
+          Here's an overview of your job search progress
+        </p>
+      </div>
 
-        <div className="mb-8">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-white">Top Matched Jobs</h2>
-            <button
-              onClick={() => navigate("/jobs")}
-              className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors"
-            >
-              View All Jobs →
-            </button>
-          </div>
+      {/* Stats grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+        <StatsCard
+          icon={Briefcase}
+          value={dashboardData?.stats?.totalMatches || 0}
+          label="Total Matches"
+          color="blue"
+        />
+        <StatsCard
+          icon={CheckCircle}
+          value={dashboardData?.stats?.appliedToday || 0}
+          label="Applied Today"
+          color="green"
+        />
+        <StatsCard
+          icon={TrendingUp}
+          value={`${dashboardData?.stats?.successRate || 0}%`}
+          label="Success Rate"
+          color="purple"
+        />
+        <ExtensionStatus />
+      </div>
 
-          <div className="space-y-4">
-            {dashboardData?.topJobs?.length > 0 ? (
-              dashboardData.topJobs.map((job) => (
-                <JobCard
-                  key={job._id}
-                  job={job}
-                  onClick={() => navigate("/jobs")}
-                />
-              ))
-            ) : jobSearchStatus === "searching" ? (
-              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-12 text-center">
-                <p className="text-gray-500 text-sm">
-                  Analyzing your profile to find perfect job matches. This
-                  usually takes about a minute — hang tight!
-                </p>
-              </div>
-            ) : (
-              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-12 text-center">
-                <p className="text-gray-400">
-                  Looking for the best jobs matching your profile. Check back
-                  later!
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="flex gap-4">
+      {/* Top matched jobs */}
+      <div className="mb-8">
+        <div className="flex justify-between items-center mb-5">
+          <h2 className="text-lg font-semibold text-white">Top Matched Jobs</h2>
           <button
             onClick={() => navigate("/jobs")}
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+            className="flex items-center gap-1.5 text-sm text-brand-400 hover:text-brand-300 font-medium transition-colors"
           >
-            Explore Recommended Jobs
-          </button>
-          <button
-            onClick={() => navigate("/profile")}
-            className="px-6 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors"
-          >
-            Edit Profile
+            View all
+            <ArrowRight className="w-4 h-4" />
           </button>
         </div>
+
+        <div className="space-y-3">
+          {dashboardData?.topJobs?.length > 0 ? (
+            dashboardData.topJobs.map((job, index) => (
+              <div
+                key={job._id}
+                className="animate-fade-in-up"
+                style={{ animationDelay: `${index * 80}ms` }}
+              >
+                <JobCard job={job} onClick={() => navigate("/jobs")} />
+              </div>
+            ))
+          ) : jobSearchStatus === "searching" ? (
+            <div className="glass rounded-xl p-12 text-center">
+              <div className="flex justify-center gap-2 mb-4">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="w-2 h-2 rounded-full bg-brand-500 animate-pulse"
+                    style={{ animationDelay: `${i * 200}ms` }}
+                  />
+                ))}
+              </div>
+              <p className="text-gray-400 text-sm">
+                Analyzing your profile to find perfect job matches...
+              </p>
+            </div>
+          ) : (
+            <div className="glass rounded-xl p-12 text-center">
+              <p className="text-gray-400">
+                Looking for the best jobs matching your profile. Check back
+                later!
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex flex-wrap gap-3">
+        <Button
+          onClick={() => navigate("/jobs")}
+          variant="primary"
+          iconRight={ArrowRight}
+        >
+          Explore Recommended Jobs
+        </Button>
+        <Button onClick={() => navigate("/profile")} variant="secondary">
+          Edit Profile
+        </Button>
       </div>
     </div>
   );

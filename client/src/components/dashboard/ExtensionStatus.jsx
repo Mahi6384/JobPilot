@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Plug, Download, CheckCircle, Loader } from "lucide-react";
 import InstallGuideModal from "./InstallGuideModal";
+import Button from "../ui/Button";
+import Badge from "../ui/Badge";
 import {
   isExtensionConnected,
   onConnectionChange,
@@ -49,21 +51,21 @@ function ExtensionStatus() {
     const isProcessing = extStatus?.processing;
 
     return (
-      <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-6">
+      <div className="glass rounded-2xl p-5 border-l-[3px] border-l-emerald-500">
         <div className="flex items-center gap-3 mb-3">
-          <CheckCircle className="w-5 h-5 text-green-400" />
-          <span className="text-white font-medium">Extension Connected</span>
+          <CheckCircle className="w-5 h-5 text-emerald-400" />
+          <span className="text-white font-medium text-sm">Extension Connected</span>
         </div>
 
         <div className="flex items-center gap-2 mb-3">
-          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-sm text-green-400">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-xs text-emerald-400">
             {isProcessing ? "Processing queue..." : "Watching for jobs"}
           </span>
         </div>
 
         {isProcessing && extStatus?.currentJob && (
-          <div className="text-xs text-blue-300 bg-blue-900/30 rounded-lg px-3 py-2 mb-2">
+          <div className="text-xs text-brand-300 bg-brand-500/10 rounded-lg px-3 py-2 mb-2 border border-brand-500/20">
             Applying: {extStatus.currentJob.title}
           </div>
         )}
@@ -72,11 +74,11 @@ function ExtensionStatus() {
           extStatus?.failed > 0 ||
           extStatus?.skipped > 0) && (
           <div className="flex gap-3 text-xs mt-2">
-            <span className="text-green-400">
+            <span className="text-emerald-400">
               {extStatus.processed} applied
             </span>
             <span className="text-red-400">{extStatus.failed} failed</span>
-            <span className="text-yellow-400">
+            <span className="text-amber-400">
               {extStatus.skipped} skipped
             </span>
           </div>
@@ -84,7 +86,7 @@ function ExtensionStatus() {
 
         {isProcessing && (
           <div className="flex items-center gap-2 mt-3">
-            <Loader className="w-3 h-3 text-blue-400 animate-spin" />
+            <Loader className="w-3 h-3 text-brand-400 animate-spin" />
             <span className="text-xs text-gray-400">
               {extStatus.queueSize} remaining in queue
             </span>
@@ -95,23 +97,25 @@ function ExtensionStatus() {
   }
 
   return (
-    <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-6">
-      <div className="flex items-center gap-3 mb-4">
-        <Plug className="w-5 h-5 text-red-400" />
-        <span className="text-white font-medium">Get the JobPilot Extension</span>
+    <div className="glass rounded-2xl p-5 border-l-[3px] border-l-amber-500">
+      <div className="flex items-center gap-3 mb-3">
+        <Plug className="w-5 h-5 text-amber-400" />
+        <span className="text-white font-medium text-sm">Chrome Extension</span>
       </div>
 
-      <p className="text-gray-400 text-sm mb-3">
+      <p className="text-gray-400 text-xs mb-4">
         Install the extension to auto-apply to jobs
       </p>
 
-      <button
+      <Button
         onClick={handleInstallClick}
-        className="w-full mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors flex justify-center items-center gap-2 font-medium"
+        variant="primary"
+        size="sm"
+        icon={Download}
+        className="w-full"
       >
-        <Download className="w-4 h-4" />
-        {hasDownloaded ? "Download Again" : "Download JobPilot Extension"}
-      </button>
+        {hasDownloaded ? "Download Again" : "Download Extension"}
+      </Button>
 
       <InstallGuideModal
         isOpen={showGuide}

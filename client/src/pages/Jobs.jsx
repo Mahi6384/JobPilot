@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import api from "../utils/api";
 import { triggerApply, isExtensionConnected } from "../utils/extensionBridge";
 import JobFilters from "../components/Jobs/JobFilters";
 import JobList from "../components/Jobs/JobList";
 import JobDetail from "../components/Jobs/JobDetail";
 import ApplyBar from "../components/Jobs/ApplyBar";
+import Badge from "../components/ui/Badge";
+import { useToast } from "../components/ui/Toast";
 
 function Jobs() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [jobs, setJobs] = useState([]);
   const [filters, setFilters] = useState({});
   const [filterOptions, setFilterOptions] = useState(null);
@@ -21,7 +25,6 @@ function Jobs() {
     total: 0,
   });
   const [loading, setLoading] = useState(true);
-  const [applyStatus, setApplyStatus] = useState(null);
 
   useEffect(() => {
     fetchFilterOptions();
@@ -85,22 +88,16 @@ function Jobs() {
 
       if (isExtensionConnected()) {
         triggerApply();
-        setApplyStatus({
-          type: "success",
-          message: `${queued} job(s) queued — extension is auto-applying`,
-        });
+        toast.success(
+          `${queued} job(s) queued — extension is auto-applying`,
+        );
       } else {
-        setApplyStatus({
-          type: "info",
-          message: `${queued} job(s) queued — open the JobPilot extension to start applying`,
-        });
+        toast.info(
+          `${queued} job(s) queued — open the extension to start applying`,
+        );
       }
-
-      setTimeout(() => setApplyStatus(null), 6000);
     } catch (error) {
-      const message = error.response?.data?.message || "Failed to queue jobs";
-      setApplyStatus({ type: "error", message });
-      setTimeout(() => setApplyStatus(null), 6000);
+      toast.error(error.response?.data?.message || "Failed to queue jobs");
     }
   };
 
@@ -109,91 +106,111 @@ function Jobs() {
     setPagination({ ...pagination, page: 1 });
   };
 
-  const statusColors = {
-    success: "bg-green-900/50 border-green-700 text-green-300",
-    info: "bg-blue-900/50 border-blue-700 text-blue-300",
-    error: "bg-red-900/50 border-red-700 text-red-300",
-  };
-
   return (
-    <div className="min-h-screen bg-gray-950 p-8">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-8">
+    <div className="p-6 lg:p-8 max-w-7xl mx-auto animate-fade-in">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-white mb-1">
           Find Your Next Opportunity
         </h1>
+        <p className="text-sm text-gray-400">
+          {!loading && (
+            <>
+              <Badge color="brand" size="sm" className="mr-2">
+                {pagination.total}
+              </Badge>
+              open positions matching your profile
+            </>
+          )}
+        </p>
+      </div>
 
-        {applyStatus && (
-          <div
-            className={`mb-6 px-4 py-3 rounded-lg border text-sm font-medium ${statusColors[applyStatus.type]}`}
-          >
-            {applyStatus.message}
-            {applyStatus.type === "success" && (
+      <div className="flex gap-6">
+        {/* Filters sidebar */}
+        <div className="w-64 flex-shrink-0 hidden lg:block">
+          <JobFilters
+            filters={filters}
+            onChange={setFilters}
+            filterOptions={filterOptions}
+            onClear={handleClearFilters}
+          />
+        </div>
+
+        {/* Job list */}
+        <div className="flex-1 min-w-0">
+          <JobList
+            jobs={jobs}
+            selectedIds={selectedIds}
+            onToggleSelect={handleToggleSelect}
+            onViewDetail={setDetailJob}
+            loading={loading}
+          />
+
+          {/* Pagination */}
+          {pagination.totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-8">
               <button
-                onClick={() => navigate("/applications")}
-                className="ml-3 underline text-green-200 hover:text-white"
+                disabled={pagination.page === 1}
+                onClick={() =>
+                  setPagination({ ...pagination, page: pagination.page - 1 })
+                }
+                className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:pointer-events-none transition-all"
               >
-                View Applications →
+                <ChevronLeft className="w-5 h-5" />
               </button>
-            )}
-          </div>
-        )}
 
-        <div className="flex gap-8">
-          <div className="w-72 flex-shrink-0">
-            <JobFilters
-              filters={filters}
-              onChange={setFilters}
-              filterOptions={filterOptions}
-              onClear={handleClearFilters}
-            />
-          </div>
+              {Array.from({ length: Math.min(pagination.totalPages, 7) }).map(
+                (_, i) => {
+                  let pageNum;
+                  if (pagination.totalPages <= 7) {
+                    pageNum = i + 1;
+                  } else if (pagination.page <= 4) {
+                    pageNum = i + 1;
+                  } else if (pagination.page >= pagination.totalPages - 3) {
+                    pageNum = pagination.totalPages - 6 + i;
+                  } else {
+                    pageNum = pagination.page - 3 + i;
+                  }
 
-          <div className="flex-1">
-            <div className="mb-4 text-gray-400 text-sm">
-              We found {pagination.total} open positions matching your profile
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() =>
+                        setPagination({ ...pagination, page: pageNum })
+                      }
+                      className={`
+                        w-9 h-9 rounded-lg text-sm font-medium transition-all
+                        ${pagination.page === pageNum
+                          ? "bg-brand-500 text-white shadow-glow"
+                          : "text-gray-400 hover:text-white hover:bg-white/5"
+                        }
+                      `}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                },
+              )}
+
+              <button
+                disabled={pagination.page === pagination.totalPages}
+                onClick={() =>
+                  setPagination({ ...pagination, page: pagination.page + 1 })
+                }
+                className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 disabled:opacity-30 disabled:pointer-events-none transition-all"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
             </div>
-
-            <JobList
-              jobs={jobs}
-              selectedIds={selectedIds}
-              onToggleSelect={handleToggleSelect}
-              onViewDetail={setDetailJob}
-              loading={loading}
-            />
-
-            {pagination.totalPages > 1 && (
-              <div className="flex justify-center gap-2 mt-8">
-                <button
-                  disabled={pagination.page === 1}
-                  onClick={() =>
-                    setPagination({ ...pagination, page: pagination.page - 1 })
-                  }
-                  className="px-4 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors"
-                >
-                  Previous
-                </button>
-                <span className="px-4 py-2 text-white">
-                  Page {pagination.page} of {pagination.totalPages}
-                </span>
-                <button
-                  disabled={pagination.page === pagination.totalPages}
-                  onClick={() =>
-                    setPagination({ ...pagination, page: pagination.page + 1 })
-                  }
-                  className="px-4 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition-colors"
-                >
-                  Next
-                </button>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
+      {/* Job detail drawer */}
       {detailJob && (
         <JobDetail job={detailJob} onClose={() => setDetailJob(null)} />
       )}
 
+      {/* Apply bar */}
       <ApplyBar
         selectedCount={selectedIds.size}
         onApply={handleApply}

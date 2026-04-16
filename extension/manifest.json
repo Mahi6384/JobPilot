@@ -4,7 +4,19 @@
   "version": "3.0.0",
   "description": "Automatically apply to matched jobs on Naukri and LinkedIn with smart form filling",
 
-  "permissions": ["storage", "tabs", "activeTab", "scripting", "alarms"],
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab",
+    "scripting",
+    "alarms",
+    "identity"
+  ],
+
+  "oauth2": {
+    "client_id": "364309725111-l32p7g6nn275n9edb6ls1qmaknlclave.apps.googleusercontent.com",
+    "scopes": ["openid", "email", "profile"]
+  },
 
   "host_permissions": [
     "http://localhost:5000/*",

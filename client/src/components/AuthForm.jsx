@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Mail, Lock, User, ArrowRight, Sparkles } from "lucide-react";
+import { Mail, Lock, User, ArrowRight } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import { GoogleLogin } from "@react-oauth/google";
@@ -93,20 +93,17 @@ function AuthForm({ btnText, newUser, passwordDes }) {
   };
 
   return (
-    <div className="min-h-screen w-full bg-surface-primary flex">
-      <div className="bg-mesh" />
+    <div className="min-h-screen w-full  bg-surface-primary flex ">
+      <div className="bg-mesh" flex justify-center items-center />
 
       {/* Left: Branding panel (hidden on mobile) */}
-      <div className="hidden lg:flex flex-1 relative overflow-hidden items-center justify-center p-12">
+      <div className="hidden lg:flex flex-1 relative overflow-hidden items-center justify-end py-12 pl-12 pr-6">
         {/* Gradient orbs */}
         <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-brand-500/10 rounded-full blur-[100px] animate-float" />
         <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-accent-500/8 rounded-full blur-[80px] animate-float animate-delay-300" />
 
         <div className="relative z-10 max-w-md">
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-xl bg-gradient-brand flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
             <span className="text-2xl font-bold text-gradient">JobPilot</span>
           </div>
 
@@ -122,17 +119,27 @@ function AuthForm({ btnText, newUser, passwordDes }) {
             on interviews, we handle the hunt.
           </p>
 
-          <div className="space-y-4">
+          <div className="space-y-5">
             {[
-              "AI-powered job matching",
-              "One-click multi-platform apply",
-              "Real-time application tracking",
+              {
+                title: "AI-powered job matching",
+                desc: "Get roles tailored to your skills and goals",
+              },
+              {
+                title: "One-click multi-platform apply",
+                desc: "Apply across LinkedIn, Naukri, and more instantly",
+              },
+              {
+                title: "Real-time application tracking",
+                desc: "Track every application in one clean dashboard",
+              },
             ].map((feature) => (
-              <div key={feature} className="flex items-center gap-3">
-                <div className="w-5 h-5 rounded-full bg-brand-500/20 flex items-center justify-center">
-                  <div className="w-2 h-2 rounded-full bg-brand-400" />
+              <div key={feature.title} className="flex gap-3">
+                <span className="text-gray-300 leading-none mt-0.5">•</span>
+                <div>
+                  <div className="text-sm text-gray-300">{feature.title}</div>
+                  <div className="text-sm text-gray-500">{feature.desc}</div>
                 </div>
-                <span className="text-sm text-gray-300">{feature}</span>
               </div>
             ))}
           </div>
@@ -140,24 +147,21 @@ function AuthForm({ btnText, newUser, passwordDes }) {
       </div>
 
       {/* Right: Form */}
-      <div className="flex-1 flex items-center justify-center p-6 lg:p-12">
+      <div className="flex-1 flex items-center justify-start p-6 lg:py-12 lg:pl-6 lg:pr-12">
         <div className="w-full max-w-md">
           {/* Mobile logo */}
           <div className="flex items-center gap-3 mb-8 lg:hidden">
-            <div className="w-8 h-8 rounded-lg bg-gradient-brand flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-white" />
-            </div>
             <span className="text-xl font-bold text-gradient">JobPilot</span>
           </div>
 
-          <h2 className="text-2xl font-bold text-white mb-2">
+          {/* <h2 className="text-2xl font-bold text-white mb-2">
             {newUser ? "Create your account" : "Welcome back"}
-          </h2>
-          <p className="text-gray-400 text-sm mb-8">
+          </h2> */}
+          {/* <p className="text-gray-400 text-sm mb-8">
             {newUser
               ? "Start automating your job search today"
               : "Sign in to continue your job search"}
-          </p>
+          </p> */}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {newUser && (

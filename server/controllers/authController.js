@@ -171,8 +171,111 @@ const googleAuth = async (req, res) => {
   }
 };
 
+// Google Auth (extension): accept Google OAuth access token
+const googleAuthAccessToken = async (req, res) => {
+  try {
+    const { accessToken } = req.body;
+
+    if (!accessToken) {
+      return res.status(400).json({ message: "Google accessToken is required" });
+    }
+
+    // Validate access token and its audience (client_id)
+    const tokenInfoResp = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(
+        accessToken
+      )}`
+    );
+    const tokenInfo = await tokenInfoResp.json();
+    if (!tokenInfoResp.ok) {
+      return res.status(401).json({
+        message: "Invalid Google access token",
+        error:
+          process.env.NODE_ENV === "development"
+            ? tokenInfo?.error_description || tokenInfo?.error || "invalid_token"
+            : "Unauthorized",
+      });
+    }
+
+    const allowedAudience = process.env.GOOGLE_EXTENSION_CLIENT_ID;
+    if (allowedAudience && tokenInfo.audience !== allowedAudience) {
+      return res.status(401).json({ message: "Google token audience mismatch" });
+    }
+
+    // Fetch user profile (includes stable `sub`)
+    const userInfoResp = await fetch(
+      "https://openidconnect.googleapis.com/v1/userinfo",
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+    const userInfo = await userInfoResp.json();
+    if (!userInfoResp.ok) {
+      return res.status(401).json({ message: "Failed to fetch Google userinfo" });
+    }
+
+    const googleId = userInfo.sub;
+    const email = userInfo.email;
+    const name = userInfo.name;
+    const picture = userInfo.picture;
+
+    if (!email) {
+      return res.status(400).json({ message: "Google account must have an email" });
+    }
+
+    // Find or create user
+    let user = await User.findOne({ $or: [{ email }, { googleId }] });
+
+    if (!user) {
+      user = new User({
+        email,
+        googleId,
+        fullName: name,
+        onboardingStatus: "initial",
+      });
+      await user.save();
+      logger.info(`New user created via Google access token: ${email}`);
+    } else {
+      let isUpdated = false;
+      if (!user.googleId) {
+        user.googleId = googleId;
+        isUpdated = true;
+      }
+      if (!user.fullName && name) {
+        user.fullName = name;
+        isUpdated = true;
+      }
+      if (isUpdated) {
+        await user.save();
+        logger.info(`Linked Google account to existing user (access token): ${email}`);
+      }
+    }
+
+    const token = generateToken(user._id);
+
+    res.status(200).json({
+      message: "Google authentication successful",
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        fullName: user.fullName,
+        onboardingStatus: user.onboardingStatus,
+      },
+    });
+  } catch (error) {
+    logger.error("Google access token auth error", error);
+    res.status(500).json({
+      message: "Failed to authenticate with Google",
+      error:
+        process.env.NODE_ENV === "development" ? error.message : "Internal server error",
+    });
+  }
+};
+
 module.exports = {
   signup,
   login,
   googleAuth,
+  googleAuthAccessToken,
 };

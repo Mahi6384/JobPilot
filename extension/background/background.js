@@ -83,9 +83,56 @@ async function handleMessage(msg) {
       pollQueue();
       return { triggered: true, ...getSnapshot() };
 
+    case "googleLogin":
+      return await handleGoogleLogin();
+
+    case "googleLogout":
+      return await handleGoogleLogout();
+
     default:
       return { error: "unknown_action" };
   }
+}
+
+async function handleGoogleLogin() {
+  const accessToken = await getGoogleAccessTokenInteractive();
+  const data = await apiCall("/auth/google/access-token", {
+    method: "POST",
+    body: JSON.stringify({ accessToken }),
+  });
+  return { token: data.token, user: data.user };
+}
+
+async function handleGoogleLogout() {
+  const tokenResult = await chrome.storage.local.get("googleAccessToken");
+  const accessToken = tokenResult.googleAccessToken;
+  if (accessToken) {
+    await new Promise((resolve) =>
+      chrome.identity.removeCachedAuthToken({ token: accessToken }, resolve)
+    );
+    await chrome.storage.local.remove("googleAccessToken");
+  }
+  return { ok: true };
+}
+
+async function getGoogleAccessTokenInteractive() {
+  const cached = await chrome.storage.local.get("googleAccessToken");
+  if (cached.googleAccessToken) return cached.googleAccessToken;
+
+  const token = await new Promise((resolve, reject) => {
+    chrome.identity.getAuthToken({ interactive: true }, (t) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+      } else if (!t) {
+        reject(new Error("No Google token returned"));
+      } else {
+        resolve(t);
+      }
+    });
+  });
+
+  await chrome.storage.local.set({ googleAccessToken: token });
+  return token;
 }
 
 function getSnapshot() {

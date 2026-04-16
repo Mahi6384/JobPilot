@@ -1,14 +1,17 @@
 import React from "react";
+import { Search } from "lucide-react";
 import JobCard from "../dashboard/JobCard";
+import { SkeletonCard } from "../ui/Skeleton";
+import EmptyState from "../ui/EmptyState";
 
 function JobList({ jobs, selectedIds, onToggleSelect, onViewDetail, loading }) {
   const MAX_SELECTION = 10;
 
   if (loading) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-3">
         {[1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className="h-48 bg-gray-800 rounded-xl animate-pulse"></div>
+          <SkeletonCard key={i} />
         ))}
       </div>
     );
@@ -16,21 +19,26 @@ function JobList({ jobs, selectedIds, onToggleSelect, onViewDetail, loading }) {
 
   if (jobs.length === 0) {
     return (
-      <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-12 text-center">
-        <p className="text-gray-400 text-lg">We couldn't find any jobs matching your current criteria.</p>
-        <p className="text-gray-500 text-sm mt-2">Try adjusting your filters to discover more open positions</p>
-      </div>
+      <EmptyState
+        icon={Search}
+        title="No jobs found"
+        description="We couldn't find any jobs matching your current criteria. Try adjusting your filters."
+      />
     );
   }
 
   return (
-    <div className="space-y-4">
-      {jobs.map((job) => {
+    <div className="space-y-3">
+      {jobs.map((job, index) => {
         const isSelected = selectedIds.has(job._id);
         const isDisabled = !isSelected && selectedIds.size >= MAX_SELECTION;
 
         return (
-          <div key={job._id} className={isDisabled ? "opacity-50" : ""}>
+          <div
+            key={job._id}
+            className={`animate-fade-in-up ${isDisabled ? "opacity-50" : ""}`}
+            style={{ animationDelay: `${index * 50}ms` }}
+          >
             <JobCard
               job={job}
               showCheckbox={true}

@@ -3,9 +3,18 @@ const path = require("path");
 
 const SESSION_PATH = path.join(__dirname, "linkedin-session.json");
 
+const LOGIN_WAIT_MS = Math.min(
+  Math.max(
+    parseInt(process.env.LINKEDIN_LOGIN_WAIT_MS || "180000", 10) || 180000,
+    30000,
+  ),
+  600000,
+);
+
 async function saveLinkedInSession() {
+  const waitSec = Math.round(LOGIN_WAIT_MS / 1000);
   console.log("🔐 Opening LinkedIn login page...");
-  console.log("   You have 90 seconds to login manually.\n");
+  console.log(`   You have up to ${waitSec}s to log in (set LINKEDIN_LOGIN_WAIT_MS to change).\n`);
   console.log("   Steps:");
   console.log("   1. Enter your LinkedIn email/password");
   console.log("   2. Complete any 2FA if prompted");
@@ -21,18 +30,33 @@ async function saveLinkedInSession() {
 
   await page.goto("https://www.linkedin.com/login");
 
-  // Wait 90 seconds for manual login
-  console.log("⏳ Waiting for you to login (90s timeout)...\n");
-  await page.waitForTimeout(90000);
+  console.log(`⏳ Log in in the browser window. Waiting up to ${waitSec}s...\n`);
+  const loggedInPattern = /linkedin\.com\/(feed|mynetwork|jobs)/i;
+  const deadline = Date.now() + LOGIN_WAIT_MS;
+  let sawLogin = false;
+  while (Date.now() < deadline) {
+    if (loggedInPattern.test(page.url())) {
+      await page.waitForTimeout(2000);
+      sawLogin = true;
+      console.log("✅ Login detected. Saving session...\n");
+      break;
+    }
+    await page.waitForTimeout(500);
+  }
+  if (!sawLogin) {
+    console.log("⏱️  Timeout reached — saving whatever cookies exist (may be expired).\n");
+  }
 
-  // Verify login was successful by checking for feed or profile elements
   const currentUrl = page.url();
   if (
+    sawLogin ||
     currentUrl.includes("/feed") ||
     currentUrl.includes("/mynetwork") ||
     currentUrl.includes("/in/")
   ) {
-    console.log("✅ Login detected! Saving session...");
+    if (!sawLogin) {
+      console.log("✅ Login URL looks OK. Saving session...");
+    }
   } else {
     console.log(
       "⚠️  Could not confirm login (current URL: " + currentUrl + ")",

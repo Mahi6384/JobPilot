@@ -1,14 +1,16 @@
 import React, { useState } from "react";
+import { Target, IndianRupee, X } from "lucide-react";
+import Input from "../ui/Input";
+import Button from "../ui/Button";
 
 function JobPreferencesStep({ formData, setFormData, errors }) {
   const [locationInput, setLocationInput] = useState("");
 
   const jobTypes = [
     { value: "full-time", label: "Full-time" },
-    {value :"Internship", label:"Internship"},
+    { value: "Internship", label: "Internship" },
     { value: "remote", label: "Remote" },
     { value: "hybrid", label: "Hybrid" },
-
   ];
 
   const handleChange = (e) => {
@@ -20,10 +22,16 @@ function JobPreferencesStep({ formData, setFormData, errors }) {
   };
 
   const handleAddLocation = () => {
-    if (locationInput.trim() && !formData.preferredLocations?.includes(locationInput.trim())) {
+    if (
+      locationInput.trim() &&
+      !formData.preferredLocations?.includes(locationInput.trim())
+    ) {
       setFormData({
         ...formData,
-        preferredLocations: [...(formData.preferredLocations || []), locationInput.trim()],
+        preferredLocations: [
+          ...(formData.preferredLocations || []),
+          locationInput.trim(),
+        ],
       });
       setLocationInput("");
     }
@@ -32,7 +40,9 @@ function JobPreferencesStep({ formData, setFormData, errors }) {
   const handleRemoveLocation = (locationToRemove) => {
     setFormData({
       ...formData,
-      preferredLocations: formData.preferredLocations?.filter((loc) => loc !== locationToRemove),
+      preferredLocations: formData.preferredLocations?.filter(
+        (loc) => loc !== locationToRemove,
+      ),
     });
   };
 
@@ -44,129 +54,117 @@ function JobPreferencesStep({ formData, setFormData, errors }) {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="text-center mb-8">
-        <h2 className="text-2xl font-bold text-white mb-2">What are you looking for?</h2>
-        <p className="text-gray-400">Help us find the perfect job for you</p>
+    <div className="space-y-5">
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold text-white mb-1">
+          What are you looking for?
+        </h2>
+        <p className="text-sm text-gray-400">
+          Help us find the perfect job for you
+        </p>
       </div>
 
-      <div className="space-y-4">
-        {/* Target Job Title */}
-        <div className="flex flex-col">
-          <label htmlFor="targetJobTitle" className="text-sm font-medium text-gray-300 mb-2">
-            Target Job Title <span className="text-red-500">*</span>
-          </label>
+      <Input
+        id="targetJobTitle"
+        name="targetJobTitle"
+        type="text"
+        label="Target Job Title"
+        placeholder="e.g., Senior Software Engineer"
+        icon={Target}
+        value={formData.targetJobTitle || ""}
+        onChange={handleChange}
+        error={errors?.targetJobTitle}
+      />
+
+      <Input
+        id="expectedLPA"
+        name="expectedLPA"
+        type="number"
+        label="Expected LPA"
+        placeholder="e.g., 18"
+        icon={IndianRupee}
+        min="0"
+        step="0.1"
+        value={formData.expectedLPA ?? ""}
+        onChange={handleChange}
+        error={errors?.expectedLPA}
+      />
+
+      {/* Preferred Locations */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-gray-300">
+          Preferred Locations
+        </label>
+        <div className="flex gap-2">
           <input
-            id="targetJobTitle"
-            name="targetJobTitle"
             type="text"
-            value={formData.targetJobTitle || ""}
-            onChange={handleChange}
-            placeholder="e.g., Senior Software Engineer"
-            className={`w-full px-4 py-3 rounded-lg bg-gray-800 border ${
-              errors?.targetJobTitle ? "border-red-500" : "border-gray-700"
-            } text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors`}
+            value={locationInput}
+            onChange={(e) => setLocationInput(e.target.value)}
+            onKeyDown={handleLocationKeyDown}
+            placeholder="Type a city and press Enter"
+            className="flex-1 h-10 px-4 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 text-sm transition-all duration-200 hover:border-white/20 focus:outline-none focus:border-brand-400/50 focus:ring-2 focus:ring-brand-400/20"
           />
-          {errors?.targetJobTitle && (
-            <span className="text-red-500 text-sm mt-1">{errors.targetJobTitle}</span>
-          )}
+          <Button
+            type="button"
+            variant="secondary"
+            size="md"
+            onClick={handleAddLocation}
+          >
+            Add
+          </Button>
         </div>
-
-        {/* Expected LPA */}
-        <div className="flex flex-col">
-          <label htmlFor="expectedLPA" className="text-sm font-medium text-gray-300 mb-2">
-            Expected LPA <span className="text-red-500">*</span>
-          </label>
-          <input
-            id="expectedLPA"
-            name="expectedLPA"
-            type="number"
-            min="0"
-            step="0.1"
-            value={formData.expectedLPA ?? ""}
-            onChange={handleChange}
-            placeholder="e.g., 18"
-            className={`w-full px-4 py-3 rounded-lg bg-gray-800 border ${
-              errors?.expectedLPA ? "border-red-500" : "border-gray-700"
-            } text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors`}
-          />
-          {errors?.expectedLPA && (
-            <span className="text-red-500 text-sm mt-1">{errors.expectedLPA}</span>
-          )}
-        </div>
-
-        {/* Preferred Locations */}
-        <div className="flex flex-col">
-          <label className="text-sm font-medium text-gray-300 mb-2">
-            Preferred Locations <span className="text-red-500">*</span>
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={locationInput}
-              onChange={(e) => setLocationInput(e.target.value)}
-              onKeyDown={handleLocationKeyDown}
-              placeholder="Type a city and press Enter"
-              className="flex-1 px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
-            />
-            <button
-              type="button"
-              onClick={handleAddLocation}
-              className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Add
-            </button>
-          </div>
-          {/* Location Tags */}
-          {formData.preferredLocations?.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-3">
-              {formData.preferredLocations.map((location) => (
-                <span
-                  key={location}
-                  className="inline-flex items-center gap-1 px-3 py-1 bg-blue-600/20 text-blue-400 rounded-full text-sm"
-                >
-                  {location}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveLocation(location)}
-                    className="hover:text-red-400 transition-colors"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-          {errors?.preferredLocations && (
-            <span className="text-red-500 text-sm mt-1">{errors.preferredLocations}</span>
-          )}
-        </div>
-
-        {/* Job Type */}
-        <div className="flex flex-col">
-          <label className="text-sm font-medium text-gray-300 mb-2">
-            Job Type <span className="text-red-500">*</span>
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            {jobTypes.map((type) => (
-              <button
-                key={type.value}
-                type="button"
-                onClick={() => setFormData({ ...formData, jobType: type.value })}
-                className={`px-4 py-3 rounded-lg border-2 text-sm font-medium transition-all ${
-                  formData.jobType === type.value
-                    ? "border-blue-500 bg-blue-500/20 text-blue-400"
-                    : "border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600"
-                }`}
+        {formData.preferredLocations?.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-2">
+            {formData.preferredLocations.map((location) => (
+              <span
+                key={location}
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-500/10 text-brand-400 rounded-full text-sm border border-brand-500/20"
               >
-                {type.label}
-              </button>
+                {location}
+                <button
+                  type="button"
+                  onClick={() => handleRemoveLocation(location)}
+                  className="hover:text-red-400 transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
             ))}
           </div>
-          {errors?.jobType && (
-            <span className="text-red-500 text-sm mt-1">{errors.jobType}</span>
-          )}
+        )}
+        {errors?.preferredLocations && (
+          <p className="text-xs text-red-400 animate-fade-in">
+            {errors.preferredLocations}
+          </p>
+        )}
+      </div>
+
+      {/* Job Type */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-gray-300">Job Type</label>
+        <div className="grid grid-cols-2 gap-3">
+          {jobTypes.map((type) => (
+            <button
+              key={type.value}
+              type="button"
+              onClick={() => setFormData({ ...formData, jobType: type.value })}
+              className={`
+                px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200
+                ${formData.jobType === type.value
+                  ? "bg-brand-500/15 border-2 border-brand-500/50 text-brand-400 shadow-glow"
+                  : "bg-white/5 border-2 border-white/10 text-gray-400 hover:border-white/20 hover:text-gray-300"
+                }
+              `}
+            >
+              {type.label}
+            </button>
+          ))}
         </div>
+        {errors?.jobType && (
+          <p className="text-xs text-red-400 animate-fade-in">
+            {errors.jobType}
+          </p>
+        )}
       </div>
     </div>
   );

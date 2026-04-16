@@ -1,6 +1,18 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import {
+  FileText,
+  CheckCircle,
+  Clock,
+  Loader,
+  XCircle,
+  SkipForward,
+  BarChart3,
+} from "lucide-react";
 import api from "../utils/api";
 import ApplicationRow from "../components/applications/ApplicationRow";
+import { SkeletonCard } from "../components/ui/Skeleton";
+import EmptyState from "../components/ui/EmptyState";
+import { useToast } from "../components/ui/Toast";
 
 const TABS = [
   { key: "all", label: "All" },
@@ -11,7 +23,26 @@ const TABS = [
   { key: "skipped", label: "Skipped" },
 ];
 
+const statIcons = {
+  Total: FileText,
+  Applied: CheckCircle,
+  Queued: Clock,
+  "In Progress": Loader,
+  Failed: XCircle,
+  Skipped: SkipForward,
+};
+
+const statColors = {
+  Total: "text-white",
+  Applied: "text-emerald-400",
+  Queued: "text-amber-400",
+  "In Progress": "text-blue-400",
+  Failed: "text-red-400",
+  Skipped: "text-gray-400",
+};
+
 function Applications() {
+  const toast = useToast();
   const [applications, setApplications] = useState([]);
   const [activeTab, setActiveTab] = useState("all");
   const [stats, setStats] = useState({});
@@ -44,7 +75,7 @@ function Applications() {
   useEffect(() => {
     setLoading(true);
     Promise.all([fetchStats(), fetchApplications()]).finally(() =>
-      setLoading(false)
+      setLoading(false),
     );
   }, [activeTab, fetchStats, fetchApplications]);
 
@@ -76,142 +107,135 @@ function Applications() {
         await api.post(`/api/applications/${applicationId}/retry`);
         fetchApplications();
         fetchStats();
+        toast.success("Application re-queued");
       } catch (error) {
-        const msg = error.response?.data?.message || "Retry failed";
-        alert(msg);
+        toast.error(error.response?.data?.message || "Retry failed");
       }
     },
-    [fetchApplications, fetchStats]
+    [fetchApplications, fetchStats, toast],
   );
 
+  const statItems = [
+    { label: "Total", value: stats.total || 0 },
+    { label: "Applied", value: stats.applied || 0 },
+    { label: "Queued", value: stats.queued || 0 },
+    { label: "In Progress", value: stats.in_progress || 0 },
+    { label: "Failed", value: stats.failed || 0 },
+    { label: "Skipped", value: stats.skipped || 0 },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-950 p-8">
-      <div className="max-w-5xl mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-2">
-          Your Application Journey
+    <div className="p-6 lg:p-8 max-w-5xl mx-auto animate-fade-in">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-white mb-1">
+          Your Applications
         </h1>
-        <p className="text-gray-400 mb-8">
-          Monitor and manage your job application progress in one place
+        <p className="text-sm text-gray-400">
+          Monitor and manage your job application progress
           {hasActiveJobs && (
-            <span className="ml-2 inline-flex items-center gap-1 text-blue-400 text-sm">
-              <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+            <span className="ml-2 inline-flex items-center gap-1.5 text-brand-400 text-xs font-medium">
+              <span className="w-1.5 h-1.5 bg-brand-400 rounded-full animate-pulse" />
               Live updating
             </span>
           )}
         </p>
+      </div>
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
-          {[
-            { label: "Total", value: stats.total || 0, color: "text-white" },
-            {
-              label: "Applied",
-              value: stats.applied || 0,
-              color: "text-green-400",
-            },
-            {
-              label: "Queued",
-              value: stats.queued || 0,
-              color: "text-yellow-400",
-            },
-            {
-              label: "In Progress",
-              value: stats.in_progress || 0,
-              color: "text-blue-400",
-            },
-            {
-              label: "Failed",
-              value: stats.failed || 0,
-              color: "text-red-400",
-            },
-            {
-              label: "Skipped",
-              value: stats.skipped || 0,
-              color: "text-gray-400",
-            },
-          ].map((stat) => (
+      {/* Stats grid */}
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-8">
+        {statItems.map((stat) => {
+          const Icon = statIcons[stat.label] || FileText;
+          return (
             <div
               key={stat.label}
-              className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 text-center"
+              className="glass rounded-xl p-4 text-center hover:bg-white/[0.05] transition-all"
             >
-              <p className={`text-2xl font-bold ${stat.color}`}>
+              <Icon
+                className={`w-4 h-4 mx-auto mb-2 ${statColors[stat.label] || "text-gray-400"}`}
+              />
+              <p className={`text-xl font-bold ${statColors[stat.label]}`}>
                 {stat.value}
               </p>
-              <p className="text-gray-400 text-sm">{stat.label}</p>
+              <p className="text-gray-500 text-[11px] mt-0.5">{stat.label}</p>
             </div>
-          ))}
-        </div>
+          );
+        })}
+      </div>
 
-        {/* Success Rate + Today */}
-        {stats.successRate !== undefined && (
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 mb-6 flex items-center justify-between">
-            <span className="text-gray-400">Success Rate</span>
-            <span className="text-2xl font-bold text-purple-400">
+      {/* Success rate */}
+      {stats.successRate !== undefined && (
+        <div className="glass rounded-xl p-4 mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-purple-400" />
+            <span className="text-sm text-gray-400">Success Rate</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-xl font-bold text-purple-400">
               {stats.successRate}%
             </span>
             {stats.appliedToday > 0 && (
-              <span className="text-green-400 text-sm font-medium">
+              <span className="text-xs text-emerald-400 font-medium">
                 {stats.appliedToday} applied today
               </span>
             )}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Tabs */}
-        <div className="flex gap-2 mb-6 border-b border-gray-800 pb-3 flex-wrap">
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === tab.key
-                  ? "bg-blue-600 text-white"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800"
-              }`}
-            >
-              {tab.label}
-              {stats[tab.key] !== undefined && tab.key !== "all" && (
-                <span className="ml-1.5 text-xs opacity-70">
-                  ({stats[tab.key]})
-                </span>
-              )}
-            </button>
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 p-1 bg-white/[0.02] rounded-xl border border-white/[0.06] overflow-x-auto">
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`
+              px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap
+              ${activeTab === tab.key
+                ? "bg-brand-500 text-white shadow-glow"
+                : "text-gray-400 hover:text-white hover:bg-white/5"
+              }
+            `}
+          >
+            {tab.label}
+            {stats[tab.key] !== undefined && tab.key !== "all" && (
+              <span className="ml-1.5 text-xs opacity-70">
+                ({stats[tab.key]})
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* List */}
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <SkeletonCard key={i} />
           ))}
         </div>
-
-        {/* Application List */}
-        {loading ? (
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="h-24 bg-gray-800 rounded-xl animate-pulse"
-              />
-            ))}
-          </div>
-        ) : applications.length === 0 ? (
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-12 text-center">
-            <p className="text-gray-400 text-lg">
-              {activeTab === "all"
-                ? "You haven't applied to any jobs yet"
-                : `No ${activeTab.replace("_", " ")} applications`}
-            </p>
-            <p className="text-gray-500 text-sm mt-2">
-              Head over to the Jobs section and start applying!
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {applications.map((app) => (
-              <ApplicationRow
-                key={app._id}
-                application={app}
-                onRetry={handleRetry}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+      ) : applications.length === 0 ? (
+        <EmptyState
+          icon={FileText}
+          title={
+            activeTab === "all"
+              ? "No applications yet"
+              : `No ${activeTab.replace("_", " ")} applications`
+          }
+          description="Head over to the Jobs section and start applying!"
+        />
+      ) : (
+        <div className="space-y-3">
+          {applications.map((app, index) => (
+            <div
+              key={app._id}
+              className="animate-fade-in-up"
+              style={{ animationDelay: `${index * 40}ms` }}
+            >
+              <ApplicationRow application={app} onRetry={handleRetry} />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

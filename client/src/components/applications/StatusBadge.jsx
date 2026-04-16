@@ -1,25 +1,25 @@
 import React from "react";
+import Badge from "../ui/Badge";
 
 const statusConfig = {
-  queued: { label: "Queued", color: "bg-yellow-500/20 text-yellow-400" },
-  in_progress: { label: "In Progress", color: "bg-blue-500/20 text-blue-400" },
-  applied: { label: "Applied", color: "bg-green-500/20 text-green-400" },
-  failed: { label: "Failed", color: "bg-red-500/20 text-red-400" },
-  skipped: { label: "Skipped", color: "bg-gray-500/20 text-gray-400" },
+  queued: { label: "Queued", color: "warning", dot: true },
+  in_progress: { label: "In Progress", color: "info", dot: true },
+  applied: { label: "Applied", color: "success", dot: true },
+  failed: { label: "Failed", color: "error", dot: true },
+  skipped: { label: "Skipped", color: "default", dot: false },
 };
 
 function StatusBadge({ status }) {
   const config = statusConfig[status] || {
     label: status,
-    color: "bg-gray-500/20 text-gray-400",
+    color: "default",
+    dot: false,
   };
 
   return (
-    <span
-      className={`px-3 py-1 rounded-full text-xs font-semibold ${config.color}`}
-    >
+    <Badge color={config.color} dot={config.dot} size="sm">
       {config.label}
-    </span>
+    </Badge>
   );
 }
 

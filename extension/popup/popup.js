@@ -3,6 +3,7 @@ const dashView = document.getElementById("dashView");
 const emailInput = document.getElementById("emailInput");
 const passwordInput = document.getElementById("passwordInput");
 const loginBtn = document.getElementById("loginBtn");
+const googleLoginBtn = document.getElementById("googleLoginBtn");
 const errorMsg = document.getElementById("errorMsg");
 const userName = document.getElementById("userName");
 const queueLabel = document.getElementById("queueLabel");
@@ -64,10 +65,38 @@ loginBtn.addEventListener("click", async () => {
   }
 });
 
+// ── Google Login ──────────────────────────────────────────────────────────────
+
+googleLoginBtn.addEventListener("click", async () => {
+  try {
+    googleLoginBtn.textContent = "Opening Google...";
+    googleLoginBtn.disabled = true;
+    errorMsg.classList.add("hidden");
+
+    const result = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ action: "googleLogin" }, resolve);
+    });
+
+    if (!result) throw new Error("Google login failed");
+    if (result.error) throw new Error(result.error);
+
+    await setAuthToken(result.token);
+    await setUserProfile(result.user);
+
+    showDashboard();
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    googleLoginBtn.textContent = "Continue with Google";
+    googleLoginBtn.disabled = false;
+  }
+});
+
 // ── Logout ───────────────────────────────────────────────────────────────────
 
 logoutBtn.addEventListener("click", async () => {
   stopPolling();
+  chrome.runtime.sendMessage({ action: "googleLogout" }, () => {});
   await clearStorage();
   dashView.classList.add("hidden");
   loginView.classList.remove("hidden");

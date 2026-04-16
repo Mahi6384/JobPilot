@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Plug, Download, CheckCircle, Loader } from "lucide-react";
 import InstallGuideModal from "./InstallGuideModal";
 import Button from "../ui/Button";
-import Badge from "../ui/Badge";
 import {
   isExtensionConnected,
   onConnectionChange,
@@ -22,6 +21,17 @@ function ExtensionStatus() {
     return unsub;
   }, []);
 
+  useEffect(() => {
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const prompted = localStorage.getItem("extensionInstallPrompted") === "true";
+
+    // New users (just finished onboarding) should see the download + unpacked tutorial once.
+    if (!connected && user?.onboardingStatus === "completed" && !prompted) {
+      setShowGuide(true);
+      localStorage.setItem("extensionInstallPrompted", "true");
+    }
+  }, [connected]);
+
   const pollStatus = useCallback(async () => {
     if (!connected) return;
     const status = await getExtensionStatus();
@@ -35,14 +45,13 @@ function ExtensionStatus() {
     return () => clearInterval(interval);
   }, [connected, pollStatus]);
 
-  const handleInstallClick = () => {
+  const downloadExtension = () => {
     const link = document.createElement("a");
     link.href = "/JobPilot-Extension.zip";
     link.download = "JobPilot-Extension.zip";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    setShowGuide(true);
     setHasDownloaded(true);
     localStorage.setItem("extensionDownloaded", "true");
   };
@@ -62,6 +71,26 @@ function ExtensionStatus() {
           <span className="text-xs text-emerald-400">
             {isProcessing ? "Processing queue..." : "Watching for jobs"}
           </span>
+        </div>
+
+        <div className="flex gap-2 mb-3">
+          <Button
+            onClick={downloadExtension}
+            variant="ghost"
+            size="sm"
+            icon={Download}
+            className="flex-1"
+          >
+            Re-download
+          </Button>
+          <Button
+            onClick={() => setShowGuide(true)}
+            variant="ghost"
+            size="sm"
+            className="flex-1"
+          >
+            Install steps
+          </Button>
         </div>
 
         {isProcessing && extStatus?.currentJob && (
@@ -92,6 +121,13 @@ function ExtensionStatus() {
             </span>
           </div>
         )}
+
+        <InstallGuideModal
+          isOpen={showGuide}
+          onClose={() => setShowGuide(false)}
+          onDownload={downloadExtension}
+          downloadLabel="Re-download Extension"
+        />
       </div>
     );
   }
@@ -108,7 +144,10 @@ function ExtensionStatus() {
       </p>
 
       <Button
-        onClick={handleInstallClick}
+        onClick={() => {
+          downloadExtension();
+          setShowGuide(true);
+        }}
         variant="primary"
         size="sm"
         icon={Download}
@@ -120,6 +159,8 @@ function ExtensionStatus() {
       <InstallGuideModal
         isOpen={showGuide}
         onClose={() => setShowGuide(false)}
+        onDownload={downloadExtension}
+        downloadLabel={hasDownloaded ? "Download Again" : "Download Extension"}
       />
     </div>
   );

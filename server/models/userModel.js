@@ -52,11 +52,12 @@ const userSchema = new mongoose.Schema(
     // Step 4: Skills & Resume (optional fields)
     skills: [{ type: String }],
     resumeUrl: { type: String },
+    resumeFileStored: { type: Boolean, default: false },
     linkedinUrl: { type: String },
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Hash password before saving

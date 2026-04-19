@@ -1,3 +1,6 @@
+const fs = require("fs").promises;
+const fsSync = require("fs");
+const path = require("path");
 const User = require("../models/userModel");
 const Job = require("../models/jobModel");
 const ScrapeQuery = require("../models/scrapeQueryModel");
@@ -5,6 +8,23 @@ const { runOnDemandScrape } = require("../services/onDemandScraper");
 const { extractStructuredResume } = require("../utils/resumeParser");
 const logger = require("../utils/logger");
 const pdf = require("pdf-parse");
+
+const RESUME_UPLOAD_DIR = path.join(__dirname, "..", "uploads", "resumes");
+
+async function ensureResumeUploadDir() {
+  await fs.mkdir(RESUME_UPLOAD_DIR, { recursive: true });
+}
+
+async function saveUserResumePdf(userId, buffer) {
+  await ensureResumeUploadDir();
+  const safeId = String(userId);
+  const fp = path.join(RESUME_UPLOAD_DIR, `${safeId}.pdf`);
+  await fs.writeFile(fp, buffer);
+}
+
+function getUserResumePdfPath(userId) {
+  return path.join(RESUME_UPLOAD_DIR, `${String(userId)}.pdf`);
+}
 
 // ── Validation Helpers ───────────────────────────────────────────────────────
 
@@ -225,6 +245,7 @@ const getResumeData = async (req, res) => {
         location: user.location || null,
         linkedinUrl: user.linkedinUrl || null,
         resumeUrl: user.resumeUrl || null,
+        hasResumeFile: Boolean(user.resumeFileStored),
       },
     });
   } catch (error) {
@@ -289,11 +310,22 @@ const parseResume = async (req, res) => {
     const data = await pdf(req.file.buffer);
     const structured = extractStructuredResume(data.text);
 
+    try {
+      await saveUserResumePdf(req.userId, req.file.buffer);
+      await User.findByIdAndUpdate(req.userId, {
+        resumeFileStored: true,
+      });
+      logger.info(`Resume PDF stored for user ${req.userId}`);
+    } catch (storeErr) {
+      logger.error("Failed to persist resume PDF", storeErr);
+    }
+
     res.status(200).json({
       success: true,
       skills: structured.skills,
       yearsOfExperience: String(structured.experience.years),
       structured,
+      hasResumeFile: true,
     });
   } catch (error) {
     logger.error("Resume parsing error", error);
@@ -302,6 +334,36 @@ const parseResume = async (req, res) => {
       message: "Failed to parse resume",
       error: error.message,
     });
+  }
+};
+
+/** Authenticated download of the PDF saved during parse-resume (for the extension). */
+const downloadResumeFile = async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select("resumeFileStored");
+    if (!user?.resumeFileStored) {
+      return res.status(404).json({ success: false, message: "No resume file stored" });
+    }
+
+    const fp = getUserResumePdfPath(req.userId);
+    try {
+      await fs.access(fp);
+    } catch {
+      return res.status(404).json({ success: false, message: "Resume file missing on disk" });
+    }
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", 'attachment; filename="resume.pdf"');
+    const stream = fsSync.createReadStream(fp);
+    stream.on("error", () => {
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, message: "Failed to read resume" });
+      }
+    });
+    stream.pipe(res);
+  } catch (error) {
+    logger.error("Download resume error", error);
+    res.status(500).json({ success: false, message: "Failed to download resume" });
   }
 };
 
@@ -359,4 +421,5 @@ module.exports = {
   getResumeData,
   updateProfile,
   parseResume,
+  downloadResumeFile,
 };

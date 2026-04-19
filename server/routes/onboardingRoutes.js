@@ -8,6 +8,7 @@ const {
   getResumeData,
   updateProfile,
   parseResume,
+  downloadResumeFile,
 } = require("../controllers/onboardingController");
 
 const multer = require("multer");
@@ -19,6 +20,7 @@ const upload = multer({
 router.use(authenticate);
 
 router.post("/parse-resume", upload.single("resume"), parseResume);
+router.get("/resume-file", downloadResumeFile);
 router.get("/status", getOnboardingStatus);
 router.put("/step/:stepNumber", saveStep);
 router.get("/profile", getProfile);

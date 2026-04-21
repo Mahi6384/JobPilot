@@ -37,6 +37,13 @@ function AdminUsers() {
     }
   };
 
+  const handleClear = () => {
+    setSearch("");
+    setOnboardingStatus("");
+    setJobSearchStatus("");
+    fetchUsers(1);
+  };
+
   useEffect(() => {
     fetchUsers(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -99,6 +106,9 @@ function AdminUsers() {
               loading={loading}
             >
               Apply
+            </Button>
+            <Button variant="ghost" onClick={handleClear} disabled={loading}>
+              Clear
             </Button>
           </div>
         </div>

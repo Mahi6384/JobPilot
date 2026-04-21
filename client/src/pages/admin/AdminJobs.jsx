@@ -39,6 +39,14 @@ function AdminJobs() {
     }
   };
 
+  const handleClear = () => {
+    setSearch("");
+    setPlatform("");
+    setDateFrom("");
+    setDateTo("");
+    fetchJobs(1);
+  };
+
   useEffect(() => {
     fetchJobs(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -94,6 +102,9 @@ function AdminJobs() {
             </div>
             <Button variant="secondary" onClick={() => fetchJobs(1)} loading={loading}>
               Apply
+            </Button>
+            <Button variant="ghost" onClick={handleClear} disabled={loading}>
+              Clear
             </Button>
           </div>
         </div>

@@ -9,6 +9,8 @@ const platforms = ["", "linkedin", "naukri", "indeed", "other"];
 function AdminApplications() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [userOptions, setUserOptions] = useState([]);
   const [rows, setRows] = useState([]);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -21,6 +23,23 @@ function AdminApplications() {
   const [platform, setPlatform] = useState(searchParams.get("platform") || "");
   const [userId, setUserId] = useState(searchParams.get("userId") || "");
   const [jobId, setJobId] = useState(searchParams.get("jobId") || "");
+
+  useEffect(() => {
+    let mounted = true;
+    setUsersLoading(true);
+    api
+      .get("/api/admin/users", { params: { page: 1, limit: 100 } })
+      .then((res) => {
+        if (!mounted) return;
+        setUserOptions(res.data?.data || []);
+      })
+      .finally(() => {
+        if (mounted) setUsersLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const fetchApps = async (page = 1) => {
     setLoading(true);
@@ -104,13 +123,19 @@ function AdminApplications() {
             </select>
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-gray-300">User ID</label>
-            <input
+            <label className="text-sm font-medium text-gray-300">User</label>
+            <select
               className="h-10 rounded-xl bg-white/5 border border-white/10 text-white text-sm px-3"
-              placeholder="Optional"
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
-            />
+            >
+              <option value="">{usersLoading ? "Loading..." : "All users"}</option>
+              {userOptions.map((u) => (
+                <option key={u._id} value={u._id}>
+                  {(u.fullName || "User") + (u.email ? ` (${u.email})` : "")}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-gray-300">Job ID</label>

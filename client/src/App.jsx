@@ -12,7 +12,9 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import AdminRoute from "./components/AdminRoute";
 import Guide from "./pages/Guide";
 import AppLayout from "./components/layout/AppLayout";
-import AdminHome from "./pages/admin/AdminHome";
+import AdminLayout from "./pages/admin/AdminLayout";
+import AdminOverview from "./pages/admin/AdminOverview";
+import Placeholder from "./pages/admin/Placeholder";
 
 const publicPaths = ["/login", "/signup", "/guide", "/onboarding"];
 
@@ -83,10 +85,23 @@ function AppContent() {
           path="/admin"
           element={
             <AdminRoute>
-              <AdminHome />
+              <AdminLayout />
             </AdminRoute>
           }
-        />
+        >
+          <Route index element={<AdminOverview />} />
+          <Route path="users" element={<Placeholder title="Admin Users" />} />
+          <Route path="jobs" element={<Placeholder title="Admin Jobs" />} />
+          <Route
+            path="applications"
+            element={<Placeholder title="Admin Applications" />}
+          />
+          <Route path="scraper" element={<Placeholder title="Admin Scraper" />} />
+          <Route
+            path="settings"
+            element={<Placeholder title="Admin Settings" />}
+          />
+        </Route>
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AppLayout>

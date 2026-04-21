@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Users, Briefcase, AlertTriangle } from "lucide-react";
 import api from "../../utils/api";
 import StatsCard from "../../components/dashboard/StatsCard";
@@ -39,30 +40,38 @@ function AdminOverview() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-        <StatsCard
-          icon={Users}
-          value={loading ? "…" : usersTotal}
-          label="Total Users"
-          color="blue"
-        />
-        <StatsCard
-          icon={Users}
-          value={loading ? "…" : usersNewLast7d}
-          label="New Users (7d)"
-          color="green"
-        />
-        <StatsCard
-          icon={Briefcase}
-          value={loading ? "…" : jobsTotal}
-          label="Total Jobs"
-          color="purple"
-        />
-        <StatsCard
-          icon={AlertTriangle}
-          value={loading ? "…" : failedLast24h}
-          label="Failed Apps (24h)"
-          color="orange"
-        />
+        <Link to="/admin/users">
+          <StatsCard
+            icon={Users}
+            value={loading ? "…" : usersTotal}
+            label="Total Users"
+            color="blue"
+          />
+        </Link>
+        <Link to="/admin/users">
+          <StatsCard
+            icon={Users}
+            value={loading ? "…" : usersNewLast7d}
+            label="New Users (7d)"
+            color="green"
+          />
+        </Link>
+        <Link to="/admin/jobs">
+          <StatsCard
+            icon={Briefcase}
+            value={loading ? "…" : jobsTotal}
+            label="Total Jobs"
+            color="purple"
+          />
+        </Link>
+        <Link to="/admin/applications?status=failed">
+          <StatsCard
+            icon={AlertTriangle}
+            value={loading ? "…" : failedLast24h}
+            label="Failed Apps (24h)"
+            color="orange"
+          />
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -112,17 +121,19 @@ function AdminOverview() {
                 {loading ? "Loading…" : "No recent errors"}
               </div>
             ) : (
-              (data?.applications?.topErrors || []).map((e) => (
-                <div
-                  key={e.errorMessage}
-                  className="flex justify-between gap-3 text-gray-300"
-                >
-                  <span className="truncate" title={e.errorMessage}>
-                    {e.errorMessage}
-                  </span>
-                  <span className="text-white font-semibold">{e.count}</span>
-                </div>
-              ))
+              <Link to="/admin/applications/failures">
+                {(data?.applications?.topErrors || []).map((e) => (
+                  <div
+                    key={e.errorMessage}
+                    className="flex justify-between gap-3 text-gray-300 hover:text-white transition-colors"
+                  >
+                    <span className="truncate" title={e.errorMessage}>
+                      {e.errorMessage}
+                    </span>
+                    <span className="text-white font-semibold">{e.count}</span>
+                  </div>
+                ))}
+              </Link>
             )}
           </div>
         </div>

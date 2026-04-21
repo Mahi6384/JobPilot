@@ -16,6 +16,7 @@
     "scrape:linkedin": "node scraper/index.js --linkedin-only",
     "scrape:force": "node scraper/index.js --force",
     "save:linkedin": "node scraper/saveLinkedInSession.js",
+    "save:naukri": "node scraper/saveSession.js",
     "db:delete-company-site-jobs": "node scripts/deleteCompanySiteJobs.js"
   },
   "keywords": [],

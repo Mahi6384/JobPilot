@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import api from "../../utils/api";
 import Button from "../../components/ui/Button";
 
@@ -7,6 +7,7 @@ const statuses = ["", "queued", "in_progress", "applied", "failed", "skipped"];
 const platforms = ["", "linkedin", "naukri", "indeed", "other"];
 
 function AdminApplications() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
   const [pagination, setPagination] = useState({
@@ -16,10 +17,10 @@ function AdminApplications() {
     totalPages: 1,
   });
 
-  const [status, setStatus] = useState("");
-  const [platform, setPlatform] = useState("");
-  const [userId, setUserId] = useState("");
-  const [jobId, setJobId] = useState("");
+  const [status, setStatus] = useState(searchParams.get("status") || "");
+  const [platform, setPlatform] = useState(searchParams.get("platform") || "");
+  const [userId, setUserId] = useState(searchParams.get("userId") || "");
+  const [jobId, setJobId] = useState(searchParams.get("jobId") || "");
 
   const fetchApps = async (page = 1) => {
     setLoading(true);
@@ -44,6 +45,21 @@ function AdminApplications() {
     fetchApps(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, platform]);
+
+  useEffect(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      const setOrDelete = (key, value) => {
+        if (value) next.set(key, value);
+        else next.delete(key);
+      };
+      setOrDelete("status", status);
+      setOrDelete("platform", platform);
+      setOrDelete("userId", userId);
+      setOrDelete("jobId", jobId);
+      return next;
+    });
+  }, [status, platform, userId, jobId, setSearchParams]);
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto animate-fade-in">

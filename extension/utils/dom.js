@@ -62,7 +62,7 @@ function findButtonByAriaLabel(label, root = document) {
 function findClickableByText(text, root = document) {
   const lower = text.toLowerCase();
   const all = root.querySelectorAll(
-    "button, a, [role='button'], input[type='submit'], input[type='button']"
+    "button, a, [role='button'], input[type='submit'], input[type='button']",
   );
 
   for (const el of all) {
@@ -97,7 +97,7 @@ function safeClick(el) {
     el.scrollIntoView({ block: "center", behavior: "instant" });
     if (el.tagName === "A") {
       el.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true })
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
       );
     } else {
       el.click();
@@ -109,58 +109,123 @@ function safeClick(el) {
 }
 
 function setNativeValue(el, value) {
-  const proto = Object.getPrototypeOf(el);
+  if (!el) return;
+
+  // ── Step 1: write value via native prototype setter ─────────────────────────
+  // This bypasses React's own setter wrapper so the internal "lastValue" tracker
+  // sees the element as changed (otherwise React bails out of the onChange path).
+  const nativeInputSetter = Object.getOwnPropertyDescriptor(
+    window.HTMLInputElement.prototype,
+    "value",
+  )?.set;
+  const nativeTextAreaSetter = Object.getOwnPropertyDescriptor(
+    window.HTMLTextAreaElement.prototype,
+    "value",
+  )?.set;
   const setter =
-    Object.getOwnPropertyDescriptor(proto, "value")?.set ||
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set ||
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")
-      ?.set;
+    el.tagName === "TEXTAREA"
+      ? nativeTextAreaSetter
+      : nativeInputSetter || nativeTextAreaSetter;
 
   if (setter) {
     setter.call(el, value);
   } else {
     el.value = value;
   }
-  el.dispatchEvent(new Event("input", { bubbles: true }));
+
+  // ── Step 2: fire events in real-user order ───────────────────────────────────
+  // focus must come first — some React controlled inputs ignore events while blurred.
+  try {
+    el.focus();
+  } catch {
+    /* ignore */
+  }
+  el.dispatchEvent(new Event("focus", { bubbles: true }));
+
+  // InputEvent (not generic Event) — React's InputEventPlugin hooks this specifically.
+  // `data` carries the new string so React's nativeEvent.data path is satisfied.
+  try {
+    el.dispatchEvent(
+      new InputEvent("input", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        data: String(value),
+        inputType: "insertText",
+      }),
+    );
+  } catch {
+    // Fallback for environments where InputEvent constructor is restricted
+    el.dispatchEvent(new Event("input", { bubbles: true, cancelable: true }));
+  }
   el.dispatchEvent(new Event("change", { bubbles: true }));
+
+  // ── Step 3: React fiber direct onChange call (hard fallback) ─────────────────
+  // Walks the fiber tree attached to the DOM node and invokes onChange if found.
+  // Handles cases where the delegated event still doesn't reach React's handler.
+  try {
+    const fiberKey = Object.keys(el).find(
+      (k) =>
+        k.startsWith("__reactFiber") || k.startsWith("__reactInternalInstance"),
+    );
+    if (fiberKey) {
+      let fiber = el[fiberKey];
+      let iterations = 0;
+      while (fiber && iterations++ < 30) {
+        const onChange = fiber.memoizedProps?.onChange;
+        if (typeof onChange === "function") {
+          onChange({
+            target: el,
+            currentTarget: el,
+            type: "change",
+            bubbles: true,
+            nativeEvent: { data: String(value) },
+          });
+          break;
+        }
+        fiber = fiber.return;
+      }
+    }
+  } catch {
+    /* fiber walk must never throw */
+  }
+
+  // ── Step 4: blur to trigger validation ──────────────────────────────────────
   el.dispatchEvent(new Event("blur", { bubbles: true }));
 }
 
-function getFieldLabel(field) {
-  const ariaLabel = field.getAttribute("aria-label");
-  if (ariaLabel) return ariaLabel;
+function nudgeFormAfterFill(panel, pak) {
+  const sel = "input:not([type='hidden']):not([type='file']), select, textarea";
+  const els =
+    pak && typeof pak.deepQuerySelectorAll === "function"
+      ? pak.deepQuerySelectorAll(panel, sel)
+      : Array.from((panel || document).querySelectorAll(sel));
 
-  const id = field.id;
-  if (id) {
-    const label = document.querySelector(`label[for="${id}"]`);
-    if (label) return label.textContent.trim();
+  for (const el of els) {
+    // Skip detached nodes — React may have unmounted them during re-render
+    if (!el.isConnected) continue;
+    // Skip elements that are not rendered (offsetParent is null for hidden elements)
+    if (
+      el.offsetParent === null &&
+      el.type !== "radio" &&
+      el.type !== "checkbox"
+    )
+      continue;
+
+    try {
+      el.dispatchEvent(
+        new InputEvent("input", { bubbles: true, cancelable: true }),
+      );
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      // Only blur if not currently focused — blurring the active element can
+      // accidentally dismiss autocomplete dropdowns or clear selection state.
+      if (document.activeElement !== el) {
+        el.dispatchEvent(new Event("blur", { bubbles: true }));
+      }
+    } catch {
+      /* ignore */
+    }
   }
-
-  const parent = field.closest("label");
-  if (parent) return parent.textContent.trim();
-
-  const wrapper =
-    field.closest(".form-group") ||
-    field.closest("[class*='field']") ||
-    field.closest("[class*='question']") ||
-    field.closest("[class*='form-component']") ||
-    field.closest(".artdeco-text-input") ||
-    field.closest(".fb-dash-form-element") ||
-    field.closest(".jobs-easy-apply-form-element") ||
-    field.closest("[data-test-form-element]");
-  if (wrapper) {
-    const lbl =
-      wrapper.querySelector("label") ||
-      wrapper.querySelector("[class*='label']") ||
-      wrapper.querySelector("legend") ||
-      wrapper.querySelector("span") ||
-      wrapper.querySelector("[data-test-form-element-label]");
-    if (lbl) return lbl.textContent.trim();
-  }
-
-  return (
-    field.getAttribute("placeholder") ||
-    field.getAttribute("name") ||
-    ""
-  );
 }
+
+/* getFieldLabel is provided by utils/resolveLabel.js (injected before formFiller). */

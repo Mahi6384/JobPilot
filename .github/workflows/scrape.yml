@@ -2,7 +2,8 @@ name: Scheduled Job Scraper
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # Fires every 6 hours; script self-throttles to ~18h
+    # Every 6h; scraper self-throttles with minHoursBetweenScrapes (18h in scraper/config.js)
+    - cron: '0 */6 * * *'
   workflow_dispatch: # Manual trigger button in GitHub UI
 
 jobs:
@@ -27,11 +28,31 @@ jobs:
         working-directory: ./server
         run: npx playwright install chromium --with-deps
 
+      # Playwright reads session JSON from disk; secrets hold base64(file).
+      - name: Materialize scraper sessions from secrets
+        working-directory: ./server
+        env:
+          LINKEDIN_SESSION_B64: ${{ secrets.LINKEDIN_SESSION }}
+          NAUKRI_SESSION_B64: ${{ secrets.NAUKRI_SESSION }}
+        run: |
+          set -euo pipefail
+          if [ -n "$LINKEDIN_SESSION_B64" ]; then
+            echo "$LINKEDIN_SESSION_B64" | base64 -d > scraper/linkedin-session.json
+            echo "LinkedIn session file written."
+          else
+            echo "LINKEDIN_SESSION secret empty — LinkedIn scrape may be limited."
+          fi
+          if [ -n "$NAUKRI_SESSION_B64" ]; then
+            echo "$NAUKRI_SESSION_B64" | base64 -d > scraper/naukri-session.json
+            echo "Naukri session file written."
+          else
+            echo "NAUKRI_SESSION secret empty — Naukri uses anonymous context if allowed."
+          fi
+
       - name: Run scraper
         working-directory: ./server
         env:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
-          LINKEDIN_SESSION: ${{ secrets.LINKEDIN_SESSION }}
           CI: 'true'
           NODE_ENV: production
         run: node scraper/index.js

@@ -1,4 +1,5 @@
 import React, { useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 function Modal({ open, onClose, title, size = "md", children }) {
@@ -30,7 +31,7 @@ function Modal({ open, onClose, title, size = "md", children }) {
     full: "max-w-[90vw]",
   };
 
-  return (
+  const content = (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
@@ -59,6 +60,9 @@ function Modal({ open, onClose, title, size = "md", children }) {
       </div>
     </div>
   );
+
+  // Render into document.body so it's not constrained by parent stacking contexts
+  return createPortal(content, document.body);
 }
 
 export default Modal;

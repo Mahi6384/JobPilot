@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "minScore": 6,
+  "shadowHosts": [],
+  "rootSelectors": [
+    "[class*='chatbot_Drawer']",
+    "[class*='chatbot_right']",
+    "[class*='chatbot']",
+    "[class*='sendMsgbtn_container']",
+    "[class*='apply-sidebar']",
+    "[class*='applyModule']",
+    "#apply_dialog",
+    "[class*='chatbot_Container']",
+    "[class*='ChatBot']",
+    "[class*='quickApply']",
+    "[class*='apply-drawer']",
+    "[role='dialog']"
+  ],
+  "dialogRoles": ["dialog", "complementary"],
+  "textAnchors": [
+    "apply",
+    "application",
+    "question",
+    "resume",
+    "screening"
+  ]
+}

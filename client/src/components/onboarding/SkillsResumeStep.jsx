@@ -79,7 +79,10 @@ function SkillsResumeStep({ formData, setFormData, errors }) {
         { headers: { Authorization: `Bearer ${token}` } },
       );
 
-      const { skills } = response.data;
+      const { skills, hasResumeFile } = response.data;
+      if (hasResumeFile) {
+        toast.success("Resume saved — JobPilot can auto-upload it on Naukri.");
+      }
       if (skills && skills.length > 0) {
         const currentSkills = new Set(formData.skills || []);
         skills.forEach((s) => currentSkills.add(s));

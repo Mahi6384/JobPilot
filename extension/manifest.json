@@ -24,6 +24,7 @@
     "http://127.0.0.1/*",
     "*://www.naukri.com/*",
     "*://naukri.com/*",
+    "*://*.naukri.com/*",
     "*://www.linkedin.com/*",
     "*://in.linkedin.com/*",
     "*://linkedin.com/*"
@@ -56,6 +57,24 @@
     },
     {
       "matches": [
+        "*://www.naukri.com/*",
+        "*://naukri.com/*",
+        "*://*.naukri.com/*"
+      ],
+      "js": [
+        "utils/dom.js",
+        "utils/resolveLabel.js",
+        "utils/formFiller.js",
+        "utils/panelKernel.js",
+        "utils/naukriChatTurn.js",
+        "utils/resumeFile.js",
+        "utils/naukriDebug.js",
+        "content-scripts/naukri.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
         "http://localhost:5173/*",
         "https://jobpilot-wheat.vercel.app/*"
       ],
@@ -68,12 +87,19 @@
     {
       "resources": [
         "utils/dom.js",
+        "utils/resolveLabel.js",
         "utils/formFiller.js",
+        "utils/panelKernel.js",
+        "utils/naukriChatTurn.js",
+        "utils/resumeFile.js",
+        "utils/naukriDebug.js",
+        "config/naukri-hints.json",
         "content-scripts/naukri.js"
       ],
       "matches": [
         "*://www.naukri.com/*",
         "*://naukri.com/*",
+        "*://*.naukri.com/*",
         "*://www.linkedin.com/*",
         "*://in.linkedin.com/*",
         "*://linkedin.com/*"

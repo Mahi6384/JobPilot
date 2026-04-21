@@ -26,8 +26,20 @@ function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const userData = JSON.parse(localStorage.getItem("user") || "{}");
-    setUser(userData);
+    const loadUser = () => {
+      const userData = JSON.parse(localStorage.getItem("user") || "{}");
+      setUser(userData);
+    };
+
+    loadUser();
+
+    window.addEventListener("authChange", loadUser);
+    window.addEventListener("storage", loadUser);
+
+    return () => {
+      window.removeEventListener("authChange", loadUser);
+      window.removeEventListener("storage", loadUser);
+    };
   }, []);
 
   const handleLogout = () => {

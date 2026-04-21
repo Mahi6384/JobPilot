@@ -245,7 +245,7 @@ exports.getJobs = async (req, res) => {
         .select(
           "title company location platform jobType easyApply scrapedAt applicationUrl createdAt updatedAt isDeleted deletedAt",
         )
-        .sort({ scrapedAt: sortDir })
+        .sort({ scrapedAt: sortDir, _id: sortDir })
         .skip(skip)
         .limit(limitNum)
         .lean(),

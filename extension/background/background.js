@@ -6,6 +6,12 @@ const JOB_COOLDOWN_MS = 3000;
 const TAB_LOAD_TIMEOUT_MS = 25000;
 const CONTENT_SCRIPT_TIMEOUT_MS = 90000;
 
+/** Same key as Naukri page `localStorage` — read via executeScript before closing tab. */
+const NAUKRI_DEBUG_LS_KEY = "jobpilot_naukri_debug";
+
+/** Set in `processOneJob` finally when debug tab is preserved; `processQueue` stops the batch. */
+let _naukriDebugStopQueueAfterJob = false;
+
 const state = {
   processing: false,
   currentApp: null,
@@ -230,6 +236,19 @@ async function processQueue(applications) {
         state.failed++;
       }
 
+      if (_naukriDebugStopQueueAfterJob) {
+        logger.info("[JobPilot][Debug] Auto-flow paused for manual debugging");
+        logger.info(
+          "[JobPilot][Debug] Queue batch stopped (set jobpilot_naukri_debug to 0 or reload extension flow to continue auto-queue)"
+        );
+        broadcast(
+          `Debug mode: tab kept open — ${total - i - 1} queued job(s) in this batch were not started`,
+          i + 1,
+          total
+        );
+        break;
+      }
+
       if (i < total - 1) await delay(JOB_COOLDOWN_MS);
     }
 
@@ -251,6 +270,8 @@ async function processQueue(applications) {
 // ── Single Job Processor ─────────────────────────────────────────────────────
 
 async function processOneJob(application, jobUrl, platform, log) {
+  _naukriDebugStopQueueAfterJob = false;
+
   await safeStatusUpdate(application._id, "in_progress");
   log.step("status", "in_progress");
 
@@ -273,11 +294,26 @@ async function processOneJob(application, jobUrl, platform, log) {
 
     if (isNaukri) {
       log.step("inject", "naukri");
-      await injectScripts(tab.id, [
-        "utils/dom.js",
-        "utils/formFiller.js",
-        "content-scripts/naukri.js",
-      ]);
+      let injectOk = await waitForNaukriContentScriptsReady(tab.id, 15000);
+      if (!injectOk) {
+        logger.warn(
+          "[JobPilot][Naukri] Manifest scripts not ready in time — programmatic inject fallback"
+        );
+        injectOk = await injectNaukriScriptStack(tab.id);
+      }
+      if (!injectOk) {
+        log.step("inject", "failed_probe");
+        await safeStatusUpdate(
+          application._id,
+          "failed",
+          "Extension could not load Naukri scripts (PanelKernel / naukri probe failed)"
+        );
+        return {
+          success: false,
+          error: "naukri_inject_probe_failed",
+          skip: false,
+        };
+      }
     } else if (isLinkedIn) {
       log.step("inject", "linkedin");
       await injectScripts(tab.id, [
@@ -297,12 +333,32 @@ async function processOneJob(application, jobUrl, platform, log) {
 
     await delay(500);
 
+    let resumeAttachment = null;
+    if (isNaukri) {
+      try {
+        resumeAttachment = await getResumeFileAsBase64();
+        if (resumeAttachment) {
+          log.step(
+            "resume",
+            "attachment",
+            `loaded (${Math.round(resumeAttachment.base64.length / 1024)} KB b64)`
+          );
+        }
+      } catch (e) {
+        log.warn(`Resume PDF not attached: ${e.message}`);
+      }
+    }
+
     // ── Phase 1: Content script apply attempt (with retry) ──
     let csResult;
     try {
       csResult = await sendMessageWithRetry(
         tab.id,
-        { action: "applyToJob", resumeData: state.resumeData },
+        {
+          action: "applyToJob",
+          resumeData: state.resumeData,
+          resumeAttachment,
+        },
         CONTENT_SCRIPT_TIMEOUT_MS,
         isLinkedIn ? 4 : 1
       );
@@ -371,8 +427,28 @@ async function processOneJob(application, jobUrl, platform, log) {
     return { success: false, skip: csResult?.skip };
   } finally {
     try {
-      await chrome.tabs.remove(tab.id);
-    } catch {}
+      if (!tab?.id) return;
+
+      const keepOpenForDebug =
+        /naukri\.com/i.test(jobUrl) && (await readNaukriTabDebugPause(tab.id));
+
+      if (keepOpenForDebug) {
+        _naukriDebugStopQueueAfterJob = true;
+        logger.info("[JobPilot][Debug] Auto-flow paused for manual debugging");
+        logger.info(
+          "[JobPilot][Debug] Naukri tab left open; remaining jobs in this batch were not started"
+        );
+        try {
+          await chrome.tabs.update(tab.id, { active: true });
+        } catch (e) {
+          logger.warn(`Could not focus debug tab: ${e.message}`);
+        }
+      } else {
+        await chrome.tabs.remove(tab.id);
+      }
+    } catch (e) {
+      logger.warn(`Tab cleanup: ${e.message}`);
+    }
   }
 }
 
@@ -386,6 +462,104 @@ const NAUKRI_URL_SUCCESS_PATTERNS = [
   "/apply/confirmation",
   "applystatus=success",
 ];
+
+/**
+ * Injected on Naukri only. Stricter than probePageForSuccess — ignores JD body
+ * noise that caused false "applied" on job-listings pages.
+ */
+function probeNaukriStrictSuccess() {
+  function buttonShowsApplied(btn) {
+    if (!btn || !btn.textContent) return false;
+    const t = btn.textContent.toLowerCase().replace(/\s+/g, " ").trim();
+    if (!t.includes("applied")) return false;
+    if (t.length > 120) return false;
+    return (
+      t === "applied" ||
+      /^applied\s*$/i.test(t) ||
+      t.includes("already applied") ||
+      t.includes("you have already applied") ||
+      t.includes("you've already applied") ||
+      t.includes("applied successfully")
+    );
+  }
+
+  const href = location.href.toLowerCase();
+  if (href.includes("/myapply/saveapply")) return { reason: "url_saveapply" };
+  if (href.includes("/thankjob") || href.includes("applystatus=success"))
+    return { reason: "url_thankjob" };
+  if (href.includes("/apply/confirmation")) return { reason: "url_confirmation" };
+
+  try {
+    const params = new URLSearchParams(location.search);
+    const raw = params.get("multiApplyResp");
+    if (raw) {
+      const decoded = decodeURIComponent(raw);
+      try {
+        const parsed = JSON.parse(decoded);
+        const status = parsed?.status ?? parsed?.statusCode;
+        if (Number(status) === 200) return { reason: "multiApplyResp_200" };
+      } catch {
+        /* no loose string match */
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  if (
+    document.querySelector(
+      ".styles_already-applied__MMRPM,.already-applied," +
+        "[class*='alreadyApplied'],[class*='already_applied']"
+    )
+  ) {
+    return { reason: "dom_already_applied" };
+  }
+
+  const btnSelectors = [
+    "#apply-button",
+    ".apply-button",
+    "[class*='apply-btn']",
+    "[class*='applyButton']",
+  ];
+  for (const sel of btnSelectors) {
+    try {
+      const btn = document.querySelector(sel);
+      if (btn && buttonShowsApplied(btn)) return { reason: "button_text_applied" };
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const overlayPhrases = [
+    "successfully applied",
+    "application sent",
+    "application submitted",
+    "you have already applied",
+    "applied successfully",
+    "your application was sent",
+    "your application has been submitted",
+    "application was submitted",
+  ];
+  try {
+    const roots = document.querySelectorAll(
+      "[role='dialog'],#apply_dialog," +
+        "[class*='chatbot'],[class*='ChatBot'],[class*='apply-sidebar']," +
+        "[class*='applyModule'],[class*='quickApply'],[class*='apply-drawer']"
+    );
+    for (const root of roots) {
+      const chunk = (root.innerText || "").toLowerCase();
+      if (chunk.length > 8000) continue;
+      for (let i = 0; i < overlayPhrases.length; i++) {
+        if (chunk.includes(overlayPhrases[i]))
+          return { reason: "scoped_text:" + overlayPhrases[i] };
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return null;
+}
 
 /**
  * Injected into the tab via executeScript. Checks text, DOM, buttons, and
@@ -467,6 +641,19 @@ async function verifyApplicationOnPage(tabId, platform, log) {
     const urlMatch = checkUrlForSuccess(url);
     if (urlMatch) return urlMatch;
 
+    if (platform === "naukri") {
+      const [probe] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: probeNaukriStrictSuccess,
+      });
+      if (probe?.result) {
+        log.info(`Verify: Naukri strict probe — ${probe.result.reason}`);
+        return { success: true, reason: `naukri:${probe.result.reason}` };
+      }
+      log.info("Verify: no Naukri strict success signal");
+      return { success: false, reason: "no_signal" };
+    }
+
     const [probe] = await chrome.scripting.executeScript({
       target: { tabId },
       func: probePageForSuccess,
@@ -482,14 +669,8 @@ async function verifyApplicationOnPage(tabId, platform, log) {
     log.info("Verify: no success signal on page");
     return { success: false, reason: "no_signal" };
   } catch (err) {
-    if (platform === "naukri") {
-      log.info(
-        `Verify: tab inaccessible (${err.message}) — Naukri redirect likely succeeded`
-      );
-      return { success: true, reason: "tab_gone_naukri_redirect" };
-    }
-    log.warn(`Verify: tab error (${err.message})`);
-    return { success: false, reason: `tab_error:${err.message}` };
+    log.warn(`Verify: error (${err.message})`);
+    return { success: false, reason: `verify_error:${err.message}` };
   }
 }
 
@@ -511,18 +692,23 @@ async function attemptRecovery(tabId, platform, log) {
       if (urlMatch) return { success: true, message: urlMatch.reason };
 
       if (tab.status === "complete") {
+        const probeFunc =
+          platform === "naukri" ? probeNaukriStrictSuccess : probePageForSuccess;
         const [probe] = await chrome.scripting.executeScript({
           target: { tabId },
-          func: probePageForSuccess,
+          func: probeFunc,
         });
 
         if (probe?.result) {
-          return { success: true, message: "page_content_success" };
+          const msg =
+            platform === "naukri"
+              ? `naukri:${probe.result.reason || "strict"}`
+              : "page_content_success";
+          return { success: true, message: msg };
         }
       }
     } catch (tabErr) {
-      log.info(`Recovery: tab gone (${tabErr.message})`);
-      return { success: true, message: "tab_closed_after_apply" };
+      log.warn(`Recovery: attempt error (${tabErr.message})`);
     }
   }
 
@@ -556,17 +742,123 @@ async function loadResumeData() {
 
 // ── Script Injection ─────────────────────────────────────────────────────────
 
-async function injectScripts(tabId, files) {
-  for (const file of files) {
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        files: [file],
-      });
-    } catch (e) {
-      logger.warn(`Inject ${file} failed: ${e.message}`);
-    }
+async function readNaukriTabDebugPause(tabId) {
+  try {
+    const frames = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        try {
+          return localStorage.getItem("jobpilot_naukri_debug") === "1";
+        } catch {
+          return false;
+        }
+      },
+    });
+    const first = frames && frames[0];
+    return first && first.result === true;
+  } catch {
+    return false;
   }
+}
+
+/**
+ * @returns {Promise<boolean>} true if executeScript succeeded
+ */
+async function injectScripts(tabId, files) {
+  if (!files?.length) return true;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files,
+    });
+    return true;
+  } catch (e) {
+    logger.warn(`Inject failed (${files.join(", ")}): ${e.message}`);
+    return false;
+  }
+}
+
+/** Probes the extension isolated world in the tab (manifest + programmatic share this world). */
+async function probeNaukriInjectState(tabId) {
+  try {
+    const res = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => ({
+        panelKernel: typeof globalThis.PanelKernel !== "undefined",
+        naukriInit: !!globalThis.__JOBPILOT_NAUKRI_INIT__,
+      }),
+    });
+    return res?.[0]?.result || { panelKernel: false, naukriInit: false };
+  } catch {
+    return { panelKernel: false, naukriInit: false };
+  }
+}
+
+/**
+ * Waits for manifest `content_scripts` on Naukri (dom → … → panelKernel → naukri.js).
+ * Avoids racing a second programmatic inject before `document_idle` has finished.
+ */
+async function waitForNaukriContentScriptsReady(tabId, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const p = await probeNaukriInjectState(tabId);
+    if (p.panelKernel && p.naukriInit) {
+      logger.info(
+        "[JobPilot][Naukri] Content scripts ready (manifest): PanelKernel + naukri listener"
+      );
+      return true;
+    }
+    await delay(300);
+  }
+  return false;
+}
+
+/**
+ * Injects Naukri automation stack and verifies PanelKernel (sidebar / deep DOM helpers).
+ * Retries full stack once, then repairs with dom+panelKernel if needed.
+ */
+async function injectNaukriScriptStack(tabId) {
+  const files = [
+    "utils/dom.js",
+    "utils/resolveLabel.js",
+    "utils/formFiller.js",
+    "utils/panelKernel.js",
+    "utils/resumeFile.js",
+    "utils/naukriDebug.js",
+    "content-scripts/naukri.js",
+  ];
+
+  let ok = await injectScripts(tabId, files);
+  let probe = await probeNaukriInjectState(tabId);
+
+  if (!ok || !probe.naukriInit) {
+    logger.warn(
+      "[JobPilot][Naukri] First inject incomplete — retrying full script stack once"
+    );
+    ok = await injectScripts(tabId, files);
+    probe = await probeNaukriInjectState(tabId);
+  }
+
+  if (probe.naukriInit && !probe.panelKernel) {
+    logger.warn(
+      "[JobPilot][Naukri] PanelKernel missing while naukri loaded — repair inject (dom + panelKernel)"
+    );
+    await injectScripts(tabId, ["utils/dom.js", "utils/panelKernel.js"]);
+    probe = await probeNaukriInjectState(tabId);
+  }
+
+  if (!probe.panelKernel || !probe.naukriInit) {
+    logger.error(
+      "[JobPilot][Naukri] Injection probe failed — panelKernel: " +
+        !!probe.panelKernel +
+        ", naukriInit: " +
+        !!probe.naukriInit +
+        ". Open chrome://extensions → JobPilot → Service worker → Inspect, and check for errors after inject."
+    );
+    return false;
+  }
+
+  return true;
 }
 
 // ── Messaging ────────────────────────────────────────────────────────────────

@@ -66,6 +66,7 @@
         "utils/resolveLabel.js",
         "utils/formFiller.js",
         "utils/panelKernel.js",
+        "utils/naukriChatTurn.js",
         "utils/resumeFile.js",
         "utils/naukriDebug.js",
         "content-scripts/naukri.js"
@@ -89,6 +90,7 @@
         "utils/resolveLabel.js",
         "utils/formFiller.js",
         "utils/panelKernel.js",
+        "utils/naukriChatTurn.js",
         "utils/resumeFile.js",
         "utils/naukriDebug.js",
         "config/naukri-hints.json",

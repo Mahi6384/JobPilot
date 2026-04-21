@@ -24,6 +24,19 @@ function AdminJobs() {
 
   const selectedCount = selected.size;
 
+  const sortedRows = useMemo(() => {
+    const dir = sort === "asc" ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const aTime = a.scrapedAt ? new Date(a.scrapedAt).getTime() : 0;
+      const bTime = b.scrapedAt ? new Date(b.scrapedAt).getTime() : 0;
+      if (aTime !== bTime) return (aTime - bTime) * dir;
+      const aId = String(a._id || "");
+      const bId = String(b._id || "");
+      if (aId === bId) return 0;
+      return aId > bId ? dir : -dir;
+    });
+  }, [rows, sort]);
+
   const fetchJobs = async (page = 1) => {
     setLoading(true);
     try {
@@ -95,7 +108,7 @@ function AdminJobs() {
   useEffect(() => {
     fetchJobs(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [platform]);
+  }, [platform, sort]);
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto animate-fade-in">
@@ -220,7 +233,7 @@ function AdminJobs() {
                   </td>
                 </tr>
               ) : (
-                rows.map((j) => (
+                sortedRows.map((j) => (
                   <tr key={j._id} className="hover:bg-white/[0.03]">
                     <td className="px-4 py-3">
                       <input

@@ -95,7 +95,7 @@ function AdminJobs() {
   useEffect(() => {
     fetchJobs(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [platform, sort]);
+  }, [platform]);
 
   return (
     <div className="p-6 lg:p-8 max-w-7xl mx-auto animate-fade-in">

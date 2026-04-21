@@ -14,6 +14,12 @@ import Guide from "./pages/Guide";
 import AppLayout from "./components/layout/AppLayout";
 import AdminLayout from "./pages/admin/AdminLayout";
 import AdminOverview from "./pages/admin/AdminOverview";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AdminUserDetail from "./pages/admin/AdminUserDetail";
+import AdminJobs from "./pages/admin/AdminJobs";
+import AdminJobDetail from "./pages/admin/AdminJobDetail";
+import AdminApplications from "./pages/admin/AdminApplications";
+import AdminFailures from "./pages/admin/AdminFailures";
 import Placeholder from "./pages/admin/Placeholder";
 
 const publicPaths = ["/login", "/signup", "/guide", "/onboarding"];
@@ -90,12 +96,12 @@ function AppContent() {
           }
         >
           <Route index element={<AdminOverview />} />
-          <Route path="users" element={<Placeholder title="Admin Users" />} />
-          <Route path="jobs" element={<Placeholder title="Admin Jobs" />} />
-          <Route
-            path="applications"
-            element={<Placeholder title="Admin Applications" />}
-          />
+          <Route path="users" element={<AdminUsers />} />
+          <Route path="users/:id" element={<AdminUserDetail />} />
+          <Route path="jobs" element={<AdminJobs />} />
+          <Route path="jobs/:id" element={<AdminJobDetail />} />
+          <Route path="applications" element={<AdminApplications />} />
+          <Route path="applications/failures" element={<AdminFailures />} />
           <Route path="scraper" element={<Placeholder title="Admin Scraper" />} />
           <Route
             path="settings"

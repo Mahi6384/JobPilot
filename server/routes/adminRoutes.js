@@ -8,6 +8,8 @@ const {
   getUserById,
   getJobs,
   getJobById,
+  softDeleteJob,
+  softDeleteJobsBulk,
   getApplications,
   getApplicationFailures,
 } = require("../controllers/adminController");
@@ -24,6 +26,8 @@ router.get("/users", getUsers);
 router.get("/users/:id", getUserById);
 router.get("/jobs", getJobs);
 router.get("/jobs/:id", getJobById);
+router.delete("/jobs/:id", softDeleteJob);
+router.post("/jobs/bulk-delete", softDeleteJobsBulk);
 router.get("/applications", getApplications);
 router.get("/applications/failures", getApplicationFailures);
 

@@ -201,14 +201,22 @@ exports.getUserById = async (req, res) => {
 
 exports.getJobs = async (req, res) => {
   try {
-    const { search, platform, dateFrom, dateTo, page = 1, limit = 20 } =
+    const {
+      search,
+      platform,
+      dateFrom,
+      dateTo,
+      page = 1,
+      limit = 20,
+      sort = "desc",
+    } =
       req.query;
 
     const pageNum = Math.max(1, Number(page) || 1);
     const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
     const skip = (pageNum - 1) * limitNum;
 
-    const filter = {};
+    const filter = { isDeleted: { $ne: true } };
     if (platform) filter.platform = platform;
 
     if (dateFrom || dateTo) {
@@ -226,21 +234,42 @@ exports.getJobs = async (req, res) => {
       ];
     }
 
+    const sortDir = String(sort).toLowerCase() === "asc" ? 1 : -1;
+
     const [jobs, total] = await Promise.all([
       Job.find(filter)
         .select(
-          "title company location platform jobType easyApply scrapedAt applicationUrl createdAt updatedAt",
+          "title company location platform jobType easyApply scrapedAt applicationUrl createdAt updatedAt isDeleted deletedAt",
         )
-        .sort({ scrapedAt: -1 })
+        .sort({ scrapedAt: sortDir })
         .skip(skip)
         .limit(limitNum)
         .lean(),
       Job.countDocuments(filter),
     ]);
 
+    const jobIds = jobs.map((j) => j._id);
+    const failedByJobAgg = await Application.aggregate([
+      {
+        $match: {
+          jobId: { $in: jobIds },
+          status: "failed",
+        },
+      },
+      { $group: { _id: "$jobId", count: { $sum: 1 } } },
+    ]);
+    const failedByJob = new Map(
+      failedByJobAgg.map((x) => [String(x._id), x.count]),
+    );
+
+    const jobsWithStats = jobs.map((j) => ({
+      ...j,
+      failedCount: failedByJob.get(String(j._id)) || 0,
+    }));
+
     return res.status(200).json({
       success: true,
-      data: jobs,
+      data: jobsWithStats,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -273,6 +302,68 @@ exports.getJobById = async (req, res) => {
     return res.status(200).json({ success: true, data: job });
   } catch (error) {
     logger.error("Admin getJobById error", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
+exports.softDeleteJob = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid job id" });
+    }
+
+    const job = await Job.findById(id);
+    if (!job || job.isDeleted === true) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Job not found" });
+    }
+
+    job.isDeleted = true;
+    job.deletedAt = new Date();
+    await job.save();
+
+    return res.status(200).json({ success: true, message: "Job deleted" });
+  } catch (error) {
+    logger.error("Admin softDeleteJob error", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
+exports.softDeleteJobsBulk = async (req, res) => {
+  try {
+    const { jobIds } = req.body;
+    if (!Array.isArray(jobIds) || jobIds.length === 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: "jobIds array is required" });
+    }
+
+    const validIds = jobIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
+    if (validIds.length === 0) {
+      return res.status(400).json({ success: false, message: "No valid jobIds" });
+    }
+
+    const result = await Job.updateMany(
+      { _id: { $in: validIds }, isDeleted: { $ne: true } },
+      { $set: { isDeleted: true, deletedAt: new Date() } },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Jobs deleted",
+      data: {
+        matched: result.matchedCount ?? result.n ?? 0,
+        modified: result.modifiedCount ?? result.nModified ?? 0,
+      },
+    });
+  } catch (error) {
+    logger.error("Admin softDeleteJobsBulk error", error);
     return res
       .status(500)
       .json({ success: false, message: "Internal server error" });

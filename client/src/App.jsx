@@ -20,6 +20,7 @@ import AdminJobs from "./pages/admin/AdminJobs";
 import AdminJobDetail from "./pages/admin/AdminJobDetail";
 import AdminApplications from "./pages/admin/AdminApplications";
 import AdminFailures from "./pages/admin/AdminFailures";
+import AdminScraper from "./pages/admin/AdminScraper";
 import Placeholder from "./pages/admin/Placeholder";
 
 const publicPaths = ["/login", "/signup", "/guide", "/onboarding"];
@@ -102,7 +103,7 @@ function AppContent() {
           <Route path="jobs/:id" element={<AdminJobDetail />} />
           <Route path="applications" element={<AdminApplications />} />
           <Route path="applications/failures" element={<AdminFailures />} />
-          <Route path="scraper" element={<Placeholder title="Admin Scraper" />} />
+          <Route path="scraper" element={<AdminScraper />} />
           <Route
             path="settings"
             element={<Placeholder title="Admin Settings" />}

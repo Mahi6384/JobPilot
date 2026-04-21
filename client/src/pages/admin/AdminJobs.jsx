@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Search } from "lucide-react";
+import { AlertTriangle, Search, Trash2 } from "lucide-react";
 import api from "../../utils/api";
 import Input from "../../components/ui/Input";
 import Button from "../../components/ui/Button";
@@ -8,6 +8,7 @@ import Button from "../../components/ui/Button";
 function AdminJobs() {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
+  const [selected, setSelected] = useState(() => new Set());
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
@@ -19,6 +20,9 @@ function AdminJobs() {
   const [platform, setPlatform] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [sort, setSort] = useState("desc");
+
+  const selectedCount = selected.size;
 
   const fetchJobs = async (page = 1) => {
     setLoading(true);
@@ -30,10 +34,12 @@ function AdminJobs() {
         platform: platform || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
+        sort,
       };
       const res = await api.get("/api/admin/jobs", { params });
       setRows(res.data?.data || []);
       setPagination(res.data?.pagination || pagination);
+      setSelected(new Set());
     } finally {
       setLoading(false);
     }
@@ -44,7 +50,46 @@ function AdminJobs() {
     setPlatform("");
     setDateFrom("");
     setDateTo("");
+    setSort("desc");
     fetchJobs(1);
+  };
+
+  const allIdsOnPage = useMemo(() => rows.map((r) => r._id), [rows]);
+  const allSelectedOnPage =
+    allIdsOnPage.length > 0 && allIdsOnPage.every((id) => selected.has(id));
+
+  const toggleSelectAllOnPage = () => {
+    const next = new Set(selected);
+    if (allSelectedOnPage) {
+      allIdsOnPage.forEach((id) => next.delete(id));
+    } else {
+      allIdsOnPage.forEach((id) => next.add(id));
+    }
+    setSelected(next);
+  };
+
+  const toggleOne = (id) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
+  };
+
+  const handleDeleteOne = async (id) => {
+    const ok = window.confirm("Delete this job? It will be hidden from all users.");
+    if (!ok) return;
+    await api.delete(`/api/admin/jobs/${id}`);
+    fetchJobs(pagination.page);
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selected.size === 0) return;
+    const ok = window.confirm(
+      `Delete ${selected.size} job(s)? They will be hidden from all users.`,
+    );
+    if (!ok) return;
+    await api.post("/api/admin/jobs/bulk-delete", { jobIds: [...selected] });
+    fetchJobs(pagination.page);
   };
 
   useEffect(() => {
@@ -100,6 +145,17 @@ function AdminJobs() {
                 onChange={(e) => setDateTo(e.target.value)}
               />
             </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-gray-300">Sort</label>
+              <select
+                className="h-10 rounded-xl bg-white/5 border border-white/10 text-white text-sm px-3"
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+              >
+                <option value="desc">Newest</option>
+                <option value="asc">Oldest</option>
+              </select>
+            </div>
             <Button variant="secondary" onClick={() => fetchJobs(1)} loading={loading}>
               Apply
             </Button>
@@ -111,32 +167,68 @@ function AdminJobs() {
       </div>
 
       <div className="glass rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+          <div className="text-xs text-gray-400">
+            {selectedCount > 0 ? (
+              <span className="text-gray-200 font-medium">
+                {selectedCount} selected
+              </span>
+            ) : (
+              <span>Select jobs to bulk delete</span>
+            )}
+          </div>
+          <Button
+            variant="danger"
+            size="sm"
+            icon={Trash2}
+            disabled={selectedCount === 0 || loading}
+            onClick={handleDeleteSelected}
+          >
+            Delete Selected
+          </Button>
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-white/[0.03] text-gray-400">
               <tr>
+                <th className="text-left font-medium px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allSelectedOnPage}
+                    onChange={toggleSelectAllOnPage}
+                  />
+                </th>
                 <th className="text-left font-medium px-4 py-3">Job</th>
                 <th className="text-left font-medium px-4 py-3">Platform</th>
                 <th className="text-left font-medium px-4 py-3">Type</th>
+                <th className="text-left font-medium px-4 py-3">Failures</th>
                 <th className="text-left font-medium px-4 py-3">Scraped</th>
+                <th className="text-left font-medium px-4 py-3 w-28">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
               {loading ? (
                 <tr>
-                  <td className="px-4 py-6 text-gray-500" colSpan={4}>
+                  <td className="px-4 py-6 text-gray-500" colSpan={7}>
                     Loading…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-6 text-gray-500" colSpan={4}>
+                  <td className="px-4 py-6 text-gray-500" colSpan={7}>
                     No jobs found
                   </td>
                 </tr>
               ) : (
                 rows.map((j) => (
                   <tr key={j._id} className="hover:bg-white/[0.03]">
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(j._id)}
+                        onChange={() => toggleOne(j._id)}
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <Link
                         to={`/admin/jobs/${j._id}`}
@@ -155,7 +247,31 @@ function AdminJobs() {
                       {j.jobType || "-"}
                     </td>
                     <td className="px-4 py-3 text-gray-300">
+                      <div className="flex items-center gap-2">
+                        <span>{j.failedCount ?? 0}</span>
+                        {(j.failedCount ?? 0) >= 3 && (
+                          <span
+                            title="This job failed multiple times"
+                            className="inline-flex items-center gap-1 text-xs text-amber-400"
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            risky
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-300">
                       {j.scrapedAt ? new Date(j.scrapedAt).toLocaleString() : "-"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        disabled={loading}
+                        onClick={() => handleDeleteOne(j._id)}
+                      >
+                        Delete
+                      </Button>
                     </td>
                   </tr>
                 ))

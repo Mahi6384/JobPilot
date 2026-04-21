@@ -9,6 +9,7 @@ const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
 const logger = require("./utils/logger");
 const jobRoutes = require("./routes/jobRoutes");
 const applicationRoutes = require("./routes/applicationRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 dotenv.config();
 
 try {
@@ -48,6 +49,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/onboarding", onboardingRoutes);
 app.use("/api/jobs", jobRoutes);
 app.use("/api/applications", applicationRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);

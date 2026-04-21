@@ -54,6 +54,8 @@ const userSchema = new mongoose.Schema(
     resumeUrl: { type: String },
     resumeFileStored: { type: Boolean, default: false },
     linkedinUrl: { type: String },
+
+    isAdmin: { type: Boolean, default: false },
   },
   {
     timestamps: true,

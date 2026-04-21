@@ -9,8 +9,10 @@ import Applications from "./pages/Applications";
 import NotFound from "./pages/NotFound";
 import Navbar from "./components/Navbar";
 import ProtectedRoute from "./components/ProtectedRoute";
+import AdminRoute from "./components/AdminRoute";
 import Guide from "./pages/Guide";
 import AppLayout from "./components/layout/AppLayout";
+import AdminHome from "./pages/admin/AdminHome";
 
 const publicPaths = ["/login", "/signup", "/guide", "/onboarding"];
 
@@ -75,6 +77,14 @@ function AppContent() {
             <ProtectedRoute>
               <Applications />
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <AdminHome />
+            </AdminRoute>
           }
         />
         <Route path="*" element={<NotFound />} />

@@ -1,8 +1,12 @@
 const mongoose = require("mongoose");
+const path = require("path");
+const { spawn } = require("child_process");
 const User = require("../models/userModel");
 const Job = require("../models/jobModel");
 const Application = require("../models/applicationModel");
 const logger = require("../utils/logger");
+
+let scraperProcess = null;
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -364,6 +368,99 @@ exports.softDeleteJobsBulk = async (req, res) => {
     });
   } catch (error) {
     logger.error("Admin softDeleteJobsBulk error", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
+exports.getScraperSummary = async (req, res) => {
+  try {
+    const [totalJobs, byPlatformAgg, lastJobs] = await Promise.all([
+      Job.countDocuments({ isDeleted: { $ne: true } }),
+      Job.aggregate([
+        { $match: { isDeleted: { $ne: true } } },
+        { $group: { _id: "$platform", count: { $sum: 1 } } },
+      ]),
+      Job.find({ isDeleted: { $ne: true } })
+        .select("title company location platform scrapedAt applicationUrl")
+        .sort({ scrapedAt: -1 })
+        .limit(10)
+        .lean(),
+    ]);
+
+    const byPlatform = {};
+    byPlatformAgg.forEach((p) => {
+      if (p?._id) byPlatform[p._id] = p.count;
+    });
+
+    const lastScrapedAt = lastJobs[0]?.scrapedAt || null;
+
+    return res.status(200).json({
+      success: true,
+      scraper: {
+        running: Boolean(scraperProcess),
+        lastScrapedAt,
+      },
+      jobs: {
+        total: totalJobs,
+        byPlatform,
+        last: lastJobs,
+      },
+    });
+  } catch (error) {
+    logger.error("Admin getScraperSummary error", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
+exports.runScraper = async (req, res) => {
+  try {
+    const { platform = "both", force = false } = req.body || {};
+
+    if (scraperProcess) {
+      return res.status(409).json({
+        success: false,
+        message: "Scraper is already running",
+      });
+    }
+
+    const args = ["scraper/index.js"];
+    if (platform === "naukri") args.push("--naukri-only");
+    else if (platform === "linkedin") args.push("--linkedin-only");
+    else if (platform !== "both") {
+      return res.status(400).json({
+        success: false,
+        message: 'platform must be "naukri", "linkedin", or "both"',
+      });
+    }
+    if (force === true) args.push("--force");
+
+    const serverRoot = path.join(__dirname, "..");
+
+    scraperProcess = spawn("node", args, {
+      cwd: serverRoot,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+
+    scraperProcess.on("exit", () => {
+      scraperProcess = null;
+    });
+    scraperProcess.on("error", () => {
+      scraperProcess = null;
+    });
+    scraperProcess.unref();
+
+    return res.status(202).json({
+      success: true,
+      message: "Scraper started",
+      data: { platform },
+    });
+  } catch (error) {
+    logger.error("Admin runScraper error", error);
     return res
       .status(500)
       .json({ success: false, message: "Internal server error" });

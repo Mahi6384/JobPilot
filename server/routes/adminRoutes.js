@@ -12,6 +12,8 @@ const {
   softDeleteJobsBulk,
   getApplications,
   getApplicationFailures,
+  getScraperSummary,
+  runScraper,
 } = require("../controllers/adminController");
 
 router.use(authenticate);
@@ -30,6 +32,8 @@ router.delete("/jobs/:id", softDeleteJob);
 router.post("/jobs/bulk-delete", softDeleteJobsBulk);
 router.get("/applications", getApplications);
 router.get("/applications/failures", getApplicationFailures);
+router.get("/scraper/summary", getScraperSummary);
+router.post("/scraper/run", runScraper);
 
 module.exports = router;
 

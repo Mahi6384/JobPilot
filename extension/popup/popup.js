@@ -14,8 +14,11 @@ const statFailed = document.getElementById("statFailed");
 const statSkipped = document.getElementById("statSkipped");
 const autoBadge = document.getElementById("autoBadge");
 const devToggle = document.getElementById("devToggle");
+const autofillDebugToggle = document.getElementById("autofillDebugToggle");
 const logoutBtn = document.getElementById("logoutBtn");
 const extId = document.getElementById("extId");
+const autofillBtn = document.getElementById("autofillBtn");
+const completeProfileBtn = document.getElementById("completeProfileBtn");
 
 let pollTimer = null;
 
@@ -26,6 +29,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const mode = await getConfig("apiMode");
   if (mode === "dev") devToggle.classList.add("active");
+
+  const autofillDbg = await getConfig("autofillDebug");
+  if (autofillDbg) autofillDebugToggle?.classList.add("active");
 
   const token = await getAuthToken();
   if (token) {
@@ -104,6 +110,50 @@ logoutBtn.addEventListener("click", async () => {
   passwordInput.value = "";
 });
 
+// ── Manual Autofill ───────────────────────────────────────────────────────────
+
+autofillBtn?.addEventListener("click", async () => {
+  try {
+    autofillBtn.disabled = true;
+    const prev = autofillBtn.textContent;
+    autofillBtn.textContent = "Autofilling...";
+
+    const result = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ action: "autofillCurrentTab" }, resolve);
+    });
+
+    if (!result) throw new Error("No response from background worker");
+    if (result.error) throw new Error(result.error);
+
+    autofillBtn.textContent =
+      typeof result.filled === "number"
+        ? `Autofill complete (${result.filled})`
+        : "Autofill complete";
+
+    setTimeout(() => {
+      autofillBtn.textContent = prev;
+      autofillBtn.disabled = false;
+    }, 1800);
+  } catch (err) {
+    showError(err.message || String(err));
+    autofillBtn.textContent = "Autofill this page";
+    autofillBtn.disabled = false;
+  }
+});
+
+completeProfileBtn?.addEventListener("click", async () => {
+  try {
+    const url = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ action: "getProfileUrl" }, resolve);
+    });
+    const target = url?.url;
+    if (!target) throw new Error("Could not build profile URL");
+    chrome.tabs.create({ url: target });
+  } catch (err) {
+    showError(err.message || String(err));
+  }
+});
+
 // ── Dev Mode Toggle ──────────────────────────────────────────────────────────
 
 devToggle.addEventListener("click", async () => {
@@ -111,6 +161,13 @@ devToggle.addEventListener("click", async () => {
   const newMode = currentMode === "dev" ? "prod" : "dev";
   await setConfig("apiMode", newMode);
   devToggle.classList.toggle("active", newMode === "dev");
+});
+
+autofillDebugToggle?.addEventListener("click", async () => {
+  const on = await getConfig("autofillDebug");
+  const next = !on;
+  await setConfig("autofillDebug", next);
+  autofillDebugToggle.classList.toggle("active", next);
 });
 
 // ── Dashboard ────────────────────────────────────────────────────────────────

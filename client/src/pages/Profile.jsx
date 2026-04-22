@@ -162,10 +162,6 @@ function Profile() {
         setActiveSection(3);
       else if (validationErrors.skills) setActiveSection(4);
 
-      logProfileDebug("save blocked (validation errors)", {
-        validationErrors,
-        formDataSnapshot: formData,
-      });
       const firstMsg = validationErrors[errorKeys[0]];
       toast.error(
         `Complete required fields in sections 1–4 before saving. ${firstMsg || ""}`,
@@ -175,7 +171,6 @@ function Profile() {
 
     setLoading(true);
     try {
-      logProfileDebug("PUT /api/onboarding/profile (request body)", formData);
       const response = await axios.put(
         `${API_BASE}/api/onboarding/profile`,
         formData,
@@ -183,7 +178,6 @@ function Profile() {
       );
 
       const saved = normalizeProfileFromApi(response.data.profile);
-      logProfileDebug("PUT /api/onboarding/profile (response profile)", saved);
       setFormData(saved);
       setOriginalData(saved);
       setErrors({});

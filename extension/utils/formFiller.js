@@ -1,7 +1,27 @@
+function _fieldLabelForLog(el) {
+  if (!el) return "";
+  return typeof getFieldLabel === "function"
+    ? getFieldLabel(el)
+    : el.getAttribute("aria-label") ||
+        el.getAttribute("placeholder") ||
+        el.getAttribute("name") ||
+        "";
+}
+
 const FIELD_MAP = [
   {
     patterns: [/full\s*name/i, /your\s*name/i, /^name$/i, /candidate\s*name/i, /applicant\s*name/i, /first\s*(?:and|&)?\s*last\s*name/i],
     key: "name",
+  },
+  {
+    // Workday: "Given Name(s)" / "First Name"
+    patterns: [/\bgiven\s*name/i, /\bfirst\s*name/i],
+    key: "firstName",
+  },
+  {
+    // Workday: "Family Name" / "Last Name" / "Surname"
+    patterns: [/\bfamily\s*name/i, /\blast\s*name/i, /\bsurname\b/i],
+    key: "lastName",
   },
   {
     patterns: [/e-?mail/i, /email\s*(?:address|id)/i],
@@ -60,7 +80,14 @@ const FIELD_MAP = [
     fallback: "30",
   },
   {
-    patterns: [/current\s*(?:company|employer|organi[sz]ation)/i, /present\s*(?:company|employer)/i],
+    patterns: [
+      /current\s*(?:company|employer|organi[sz]ation)/i,
+      /present\s*(?:company|employer)/i,
+      /most\s+recent\s+(?:employer|company)/i,
+      /previous\s*(?:company|employer)/i,
+      /\bemployer\b/i,
+      /\bcompany\s*name\b/i,
+    ],
     key: "currentCompany",
   },
   {
@@ -94,8 +121,16 @@ const FIELD_MAP = [
 function resolveValue(key, resumeData, fallback) {
   if (!resumeData) return fallback || null;
 
+  const fullName = String(resumeData.name || "").trim();
+  const nameParts = fullName.split(/\s+/).filter(Boolean);
+  const derivedFirstName = nameParts[0] || "";
+  const derivedLastName =
+    nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
+
   const directMap = {
     name: resumeData.name,
+    firstName: derivedFirstName,
+    lastName: derivedLastName,
     email: resumeData.email,
     phone: resumeData.phone,
     currentCtc: resumeData.currentCtc,
@@ -110,10 +145,24 @@ function resolveValue(key, resumeData, fallback) {
   switch (key) {
     case "yearsOfExperience":
       return String(resumeData.experience?.years ?? fallback ?? "0");
-    case "currentCompany":
-      return resumeData.experience?.currentCompany || fallback || "";
-    case "currentTitle":
-      return resumeData.experience?.currentTitle || fallback || "";
+    case "currentCompany": {
+      const direct = resumeData.experience?.currentCompany;
+      if (direct && String(direct).trim()) return String(direct).trim();
+      const entries = resumeData.experience?.entries || [];
+      const cur =
+        entries.find((e) => e && e.isCurrent) || entries[0];
+      const fromEntry = cur?.company && String(cur.company).trim();
+      return fromEntry || fallback || "";
+    }
+    case "currentTitle": {
+      const direct = resumeData.experience?.currentTitle;
+      if (direct && String(direct).trim()) return String(direct).trim();
+      const entries = resumeData.experience?.entries || [];
+      const cur =
+        entries.find((e) => e && e.isCurrent) || entries[0];
+      const fromEntry = cur?.title && String(cur.title).trim();
+      return fromEntry || fallback || "";
+    }
     case "noticePeriod":
       return fallback || "30";
     case "gender":
@@ -526,7 +575,10 @@ function fillAllFields(container, resumeData, hooks) {
     "input[type='text'], input[type='number'], input[type='tel'], input[type='email'], input:not([type]), textarea"
   ).forEach((f) => {
     if (f.type === "hidden" || f.type === "file") return;
-    if (fillTextField(f, resumeData, hooks)) filled++;
+    const did = fillTextField(f, resumeData, hooks);
+    if (did) {
+      filled++;
+    }
   });
 
   _queryAllDeep(root, "select").forEach((s) => {

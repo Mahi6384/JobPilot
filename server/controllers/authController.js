@@ -47,6 +47,7 @@ const signup = async (req, res) => {
         email: user.email,
         fullName: user.fullName,
         onboardingStatus: user.onboardingStatus,
+        isAdmin: user.isAdmin === true,
       },
     });
   } catch (error) {
@@ -93,6 +94,7 @@ const login = async (req, res) => {
         email: user.email,
         fullName: user.fullName,
         onboardingStatus: user.onboardingStatus,
+        isAdmin: user.isAdmin === true,
       },
     });
   } catch (error) {
@@ -160,6 +162,7 @@ const googleAuth = async (req, res) => {
         email: user.email,
         fullName: user.fullName,
         onboardingStatus: user.onboardingStatus,
+        isAdmin: user.isAdmin === true,
       },
     });
   } catch (error) {
@@ -261,6 +264,7 @@ const googleAuthAccessToken = async (req, res) => {
         email: user.email,
         fullName: user.fullName,
         onboardingStatus: user.onboardingStatus,
+        isAdmin: user.isAdmin === true,
       },
     });
   } catch (error) {

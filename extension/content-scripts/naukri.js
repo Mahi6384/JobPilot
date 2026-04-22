@@ -69,6 +69,42 @@ if (!globalThis.__JOBPILOT_NAUKRI_INIT__) {
   /** Fingerprint of last bot question we acted on (Naukri chat turn driver). */
   let _naukriChatTurnState = { fp: "" };
 
+  function _getLastBotQuestionText(panel, pak) {
+    try {
+      const botMsgSel = ".botMsg, [class*='botMsg'], [class*='BotMsg']";
+      const all =
+        pak && pak.deepQuerySelectorAll
+          ? pak.deepQuerySelectorAll(panel, botMsgSel)
+          : Array.from(panel.querySelectorAll(botMsgSel));
+      let questionText = "";
+      for (const el of all) {
+        try {
+          const visible =
+            pak && pak.isVisible ? pak.isVisible(el) : el.offsetParent !== null;
+          if (!visible) continue;
+          const t = (el.textContent || "").replace(/\s+/g, " ").trim();
+          if (t.length >= 8) questionText = t;
+        } catch {
+          /* ignore */
+        }
+      }
+      return questionText || "";
+    } catch {
+      return "";
+    }
+  }
+
+  function _questionAsksForResumeUpload(qText) {
+    const t = String(qText || "").toLowerCase();
+    if (!t) return false;
+    // Only attach resume when the question explicitly asks for it.
+    return (
+      /\b(resume|cv|curriculum vitae)\b/i.test(t) ||
+      /\b(upload|attach|attachment)\b/i.test(t) ||
+      /\b(pdf|docx?|document)\b/i.test(t)
+    );
+  }
+
   /** Structured stage logging for hint tuning (telemetry). */
   function _logStage(stage, detail) {
     _log.info(`[stage:${stage}]`, detail && typeof detail === "object" ? JSON.stringify(detail) : detail);
@@ -168,7 +204,8 @@ if (!globalThis.__JOBPILOT_NAUKRI_INIT__) {
     return r.json();
   }
 
-  async function tryResumeUpload(panel) {
+  async function tryResumeUpload(panel, qText) {
+    if (!_questionAsksForResumeUpload(qText)) return false;
     if (!_resumeAttachment || !_resumeAttachment.base64) return false;
     const JPR = globalThis.JobPilotResumeFile;
     if (!JPR || typeof JPR.setFileInputFromBase64 !== "function") {
@@ -879,7 +916,8 @@ if (!globalThis.__JOBPILOT_NAUKRI_INIT__) {
 
       let didUpload = false;
       try {
-        didUpload = await tryResumeUpload(panel);
+        const qText = _getLastBotQuestionText(panel, pak);
+        didUpload = await tryResumeUpload(panel, qText);
       } catch (e) {
         if (d) d.logError("tryResumeUpload", e);
         _log.error("tryResumeUpload threw:", e && e.message ? e.message : e);

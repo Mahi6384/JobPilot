@@ -95,9 +95,147 @@ async function handleMessage(msg) {
     case "googleLogout":
       return await handleGoogleLogout();
 
+    case "autofillCurrentTab":
+      return await handleAutofillCurrentTab();
+
+    case "getProfileUrl":
+      return await handleGetProfileUrl();
+
     default:
       return { error: "unknown_action" };
   }
+}
+
+async function handleGetProfileUrl() {
+  const base = await getCurrentAppBaseUrl();
+  return { url: `${base}/profile?autofill=1` };
+}
+
+async function getCurrentAppBaseUrl() {
+  // Matches manifest externally_connectable; keep a single place to change later.
+  const cfg = await chrome.storage.local.get("jpConfig");
+  const mode = cfg.jpConfig?.apiMode || "prod";
+  return mode === "dev"
+    ? "http://localhost:5173"
+    : "https://jobpilot-wheat.vercel.app";
+}
+
+// ── Manual Autofill (popup) ───────────────────────────────────────────────────
+
+async function handleAutofillCurrentTab() {
+  const token = await getAuthToken();
+  if (!token) return { error: "not_authenticated" };
+
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab = tabs?.[0];
+  const tabId = tab?.id;
+  const url = tab?.url || "";
+  if (!tabId || !url || url.startsWith("chrome://")) {
+    return { error: "no_active_tab" };
+  }
+
+  // Ensure we have resume data ready (same source as queue runner)
+  if (!state.resumeData) {
+    await loadResumeData();
+  }
+  if (!state.resumeData) {
+    return { error: "no_resume_data" };
+  }
+
+  const isWorkday = /(\.|^)workday\.com|(\.|^)myworkdayjobs\.com/i.test(url);
+
+  // Inject shared fillers. For Workday we inject into all frames since forms
+  // often live inside iframes.
+  const injectOk = await injectScripts(
+    tabId,
+    [
+      "utils/dom.js",
+      "utils/resolveLabel.js",
+      "utils/formFiller.js",
+      "utils/panelKernel.js",
+      "utils/resumeFile.js",
+    ],
+    { allFrames: isWorkday }
+  );
+  if (!injectOk) return { error: "inject_failed" };
+
+  let resumeAttachment = null;
+  try {
+    resumeAttachment = await getResumeFileAsBase64();
+  } catch (e) {
+    logger.warn(`[JobPilot][Autofill] Resume not attached: ${e.message}`);
+  }
+
+  // Execute a one-shot fill inside the tab. No navigation / submit clicks.
+  const exec = await chrome.scripting.executeScript({
+    target: { tabId, allFrames: isWorkday },
+    args: [state.resumeData, resumeAttachment],
+    func: (resumeData, resumeAttachmentArg) => {
+      try {
+        let filled = 0;
+
+        // Try resume upload if we have a PDF and helper exists.
+        try {
+          if (
+            resumeAttachmentArg?.base64 &&
+            globalThis.JobPilotResumeFile &&
+            typeof globalThis.JobPilotResumeFile.findResumeFileInput === "function" &&
+            typeof globalThis.JobPilotResumeFile.setFileInputFromBase64 === "function"
+          ) {
+            const input = globalThis.JobPilotResumeFile.findResumeFileInput(
+              document.documentElement,
+              typeof globalThis.getFieldLabel === "function"
+                ? globalThis.getFieldLabel
+                : null
+            );
+            if (input && (!input.files || input.files.length === 0)) {
+              const ok = globalThis.JobPilotResumeFile.setFileInputFromBase64(
+                input,
+                resumeAttachmentArg.base64,
+                resumeAttachmentArg.fileName || "resume.pdf"
+              );
+              if (ok) {
+                filled++;
+              }
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+
+        if (typeof globalThis.fillAllFields === "function") {
+          filled += globalThis.fillAllFields(document.documentElement, resumeData);
+        }
+
+        if (typeof globalThis.nudgeFormAfterFill === "function") {
+          try {
+            globalThis.nudgeFormAfterFill(document.documentElement, globalThis.PanelKernel);
+          } catch {
+            /* ignore */
+          }
+        }
+
+        return {
+          ok: true,
+          filled,
+          frame: window === window.top ? "top" : "iframe",
+          href: location.href,
+        };
+      } catch (e) {
+        return { ok: false, error: e?.message || String(e) };
+      }
+    },
+  });
+
+  const results = (exec || []).map((r) => r.result).filter(Boolean);
+  const firstError = results.find((r) => r.ok === false);
+  if (firstError) return { error: firstError.error || "autofill_failed" };
+
+  const totalFilled = results.reduce(
+    (sum, r) => sum + (typeof r.filled === "number" ? r.filled : 0),
+    0
+  );
+  return { ok: true, filled: totalFilled };
 }
 
 async function handleGoogleLogin() {
@@ -291,6 +429,9 @@ async function processOneJob(application, jobUrl, platform, log) {
 
     const isNaukri = /naukri\.com/i.test(jobUrl);
     const isLinkedIn = /linkedin\.com/i.test(jobUrl);
+    const isWorkday = /(\.|^)workday\.com|(\.|^)myworkdayjobs\.com/i.test(jobUrl);
+    const isGreenhouse = /(job-boards\.greenhouse\.io|boards\.greenhouse\.io)/i.test(jobUrl);
+    const isLever = /jobs\.lever\.co/i.test(jobUrl);
 
     if (isNaukri) {
       log.step("inject", "naukri");
@@ -321,6 +462,40 @@ async function processOneJob(application, jobUrl, platform, log) {
         "utils/formFiller.js",
         "content-scripts/linkedin.js",
       ]);
+    } else if (isWorkday) {
+      log.step("inject", "workday");
+      await injectScripts(
+        tab.id,
+        [
+          "utils/dom.js",
+          "utils/resolveLabel.js",
+          "utils/formFiller.js",
+          "utils/panelKernel.js",
+          "utils/resumeFile.js",
+          "content-scripts/workday.js",
+        ],
+        { allFrames: true }
+      );
+    } else if (isGreenhouse) {
+      log.step("inject", "greenhouse");
+      await injectScripts(tab.id, [
+        "utils/dom.js",
+        "utils/resolveLabel.js",
+        "utils/formFiller.js",
+        "utils/panelKernel.js",
+        "utils/resumeFile.js",
+        "content-scripts/greenhouse.js",
+      ]);
+    } else if (isLever) {
+      log.step("inject", "lever");
+      await injectScripts(tab.id, [
+        "utils/dom.js",
+        "utils/resolveLabel.js",
+        "utils/formFiller.js",
+        "utils/panelKernel.js",
+        "utils/resumeFile.js",
+        "content-scripts/lever.js",
+      ]);
     } else {
       log.step("validate", "skipped", "Unsupported platform");
       await safeStatusUpdate(
@@ -334,7 +509,7 @@ async function processOneJob(application, jobUrl, platform, log) {
     await delay(500);
 
     let resumeAttachment = null;
-    if (isNaukri) {
+    if (isNaukri || isWorkday || isGreenhouse || isLever) {
       try {
         resumeAttachment = await getResumeFileAsBase64();
         if (resumeAttachment) {
@@ -765,10 +940,11 @@ async function readNaukriTabDebugPause(tabId) {
  * @returns {Promise<boolean>} true if executeScript succeeded
  */
 async function injectScripts(tabId, files) {
+  const allFrames = arguments.length >= 3 ? !!arguments[2]?.allFrames : false;
   if (!files?.length) return true;
   try {
     await chrome.scripting.executeScript({
-      target: { tabId },
+      target: { tabId, allFrames },
       files,
     });
     return true;
@@ -824,7 +1000,6 @@ async function injectNaukriScriptStack(tabId) {
     "utils/formFiller.js",
     "utils/panelKernel.js",
     "utils/resumeFile.js",
-    "utils/naukriDebug.js",
     "content-scripts/naukri.js",
   ];
 

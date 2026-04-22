@@ -27,7 +27,12 @@
     "*://*.naukri.com/*",
     "*://www.linkedin.com/*",
     "*://in.linkedin.com/*",
-    "*://linkedin.com/*"
+    "*://linkedin.com/*",
+    "*://*.workday.com/*",
+    "*://*.myworkdayjobs.com/*",
+    "https://job-boards.greenhouse.io/*",
+    "https://boards.greenhouse.io/*",
+    "https://jobs.lever.co/*"
   ],
 
   "background": {
@@ -68,7 +73,6 @@
         "utils/panelKernel.js",
         "utils/naukriChatTurn.js",
         "utils/resumeFile.js",
-        "utils/naukriDebug.js",
         "content-scripts/naukri.js"
       ],
       "run_at": "document_idle"
@@ -92,7 +96,6 @@
         "utils/panelKernel.js",
         "utils/naukriChatTurn.js",
         "utils/resumeFile.js",
-        "utils/naukriDebug.js",
         "config/naukri-hints.json",
         "content-scripts/naukri.js"
       ],

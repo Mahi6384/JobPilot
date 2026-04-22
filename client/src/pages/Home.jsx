@@ -14,12 +14,26 @@ function Home() {
   const [dashboardData, setDashboardData] = useState(null);
   const [user, setUser] = useState(null);
   const [jobSearchStatus, setJobSearchStatus] = useState("idle");
+  const [profileNudge, setProfileNudge] = useState(null);
 
   useEffect(() => {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
     setUser(userData);
     fetchDashboardData();
+    fetchAutofillProfileStatus();
   }, []);
+
+  const fetchAutofillProfileStatus = async () => {
+    try {
+      const resp = await api.get("/api/onboarding/resume-data");
+      const missing = resp?.data?.data?.missingFields || [];
+      if (Array.isArray(missing) && missing.length > 0) {
+        setProfileNudge(missing);
+      }
+    } catch {
+      // ignore; dashboard should still load
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
@@ -105,6 +119,30 @@ function Home() {
         />
         <ExtensionStatus />
       </div>
+
+      {profileNudge?.length > 0 && (
+        <div className="glass rounded-xl p-4 mb-8 border border-white/[0.06]">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-white">
+                Complete your profile for best automation
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                Missing:{" "}
+                {profileNudge
+                  .slice(0, 5)
+                  .map((m) => m.label)
+                  .filter(Boolean)
+                  .join(", ")}
+                {profileNudge.length > 5 ? ` (+${profileNudge.length - 5} more)` : ""}
+              </div>
+            </div>
+            <Button variant="secondary" onClick={() => navigate("/profile?autofill=1")}>
+              Complete profile
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Top matched jobs */}
       <div className="mb-8">

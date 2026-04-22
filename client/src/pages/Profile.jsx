@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
-import { User, Briefcase, Target, Zap } from "lucide-react";
+import { User, Briefcase, Target, Zap, MapPin, Shield, GraduationCap, BadgeCheck } from "lucide-react";
 import BasicInfoStep from "../components/onboarding/BasicInfoStep";
 import CurrentPositionStep from "../components/onboarding/CurrentPositionStep";
 import JobPreferencesStep from "../components/onboarding/JobPreferencesStep";
 import SkillsResumeStep from "../components/onboarding/SkillsResumeStep";
+import AddressSocialsSection from "../components/profile/AddressSocialsSection";
+import EligibilitySection from "../components/profile/EligibilitySection";
+import { ExperienceSection, EducationSection } from "../components/profile/RepeatingEntries";
+import EEOSection from "../components/profile/EEOSection";
 import Button from "../components/ui/Button";
 import { useToast } from "../components/ui/Toast";
 
@@ -15,8 +19,27 @@ const API_BASE =
     ? "http://localhost:5000"
     : "https://jobpilot-production-3ba1.up.railway.app");
 
+/** Coerce API payload so validation and inputs see stable array shapes. */
+function normalizeProfileFromApi(profile) {
+  if (!profile || typeof profile !== "object") return {};
+  return {
+    ...profile,
+    skills: Array.isArray(profile.skills) ? profile.skills : [],
+    preferredLocations: Array.isArray(profile.preferredLocations)
+      ? profile.preferredLocations
+      : [],
+    experienceEntries: Array.isArray(profile.experienceEntries)
+      ? profile.experienceEntries
+      : [],
+    educationEntries: Array.isArray(profile.educationEntries)
+      ? profile.educationEntries
+      : [],
+  };
+}
+
 function Profile() {
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
   const [activeSection, setActiveSection] = useState(1);
   const [formData, setFormData] = useState({});
@@ -31,82 +54,119 @@ function Profile() {
   };
 
   useEffect(() => {
+    if (location.pathname !== "/profile") return;
+
+    let cancelled = false;
+
     const fetchProfile = async () => {
+      setInitialLoading(true);
       try {
         const response = await axios.get(`${API_BASE}/api/onboarding/profile`, {
           headers: getAuthHeader(),
         });
-        const profile = response.data.profile;
-        setFormData(profile);
-        setOriginalData(profile);
+        const raw = response.data.profile;
+        const normalized = normalizeProfileFromApi(raw);
+        if (!cancelled) {
+          setFormData(normalized);
+          setOriginalData(normalized);
+        }
       } catch (error) {
         console.error("Failed to fetch profile:", error);
         if (error.response?.status === 401) {
           navigate("/login");
         }
       } finally {
-        setInitialLoading(false);
+        if (!cancelled) setInitialLoading(false);
       }
     };
 
     fetchProfile();
-  }, [navigate]);
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate, location.pathname]);
+
+  // If opened from the extension CTA (`/profile?autofill=1`), jump to the first
+  // extended section so users see the extra fields immediately.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search);
+      if (params.get("autofill") === "1") {
+        setActiveSection((s) => (s < 5 ? 5 : s));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [location.search]);
 
   const hasChanges = () => {
     return JSON.stringify(formData) !== JSON.stringify(originalData);
   };
 
-  const validateAll = () => {
+  /** Pure validation for current formData (avoids stale React state when branching). */
+  const computeProfileErrors = (data) => {
     const newErrors = {};
 
-    if (!formData.fullName?.trim())
-      newErrors.fullName = "Full name is required";
-    if (!formData.phone?.trim()) newErrors.phone = "Phone number is required";
-    if (!formData.location?.trim()) newErrors.location = "Location is required";
-    if (!formData.currentJobTitle?.trim())
+    if (!data.fullName?.trim()) newErrors.fullName = "Full name is required";
+    if (!data.phone?.trim()) newErrors.phone = "Phone number is required";
+    if (!data.location?.trim()) newErrors.location = "Location is required";
+    if (!data.currentJobTitle?.trim())
       newErrors.currentJobTitle = "Job title is required";
-    if (!formData.currentCompany?.trim())
+    if (!data.currentCompany?.trim())
       newErrors.currentCompany = "Company is required";
-    if (formData.currentLPA === undefined || formData.currentLPA === "")
+    if (data.currentLPA === undefined || data.currentLPA === "")
       newErrors.currentLPA = "Current LPA is required";
     if (
-      formData.yearsOfExperience === undefined ||
-      formData.yearsOfExperience === ""
+      data.yearsOfExperience === undefined ||
+      data.yearsOfExperience === ""
     )
       newErrors.yearsOfExperience = "Experience is required";
-    if (!formData.targetJobTitle?.trim())
+    if (!data.targetJobTitle?.trim())
       newErrors.targetJobTitle = "Target job is required";
-    if (formData.expectedLPA === undefined || formData.expectedLPA === "")
+    if (data.expectedLPA === undefined || data.expectedLPA === "")
       newErrors.expectedLPA = "Expected LPA is required";
-    if (!formData.preferredLocations?.length)
+    if (!data.preferredLocations?.length)
       newErrors.preferredLocations = "Add at least one location";
-    if (!formData.jobType) newErrors.jobType = "Select a job type";
-    if (!formData.skills?.length) newErrors.skills = "Add at least one skill";
+    if (!data.jobType) newErrors.jobType = "Select a job type";
+    if (!data.skills?.length) newErrors.skills = "Add at least one skill";
 
+    return newErrors;
+  };
+
+  const validateAll = () => {
+    const newErrors = computeProfileErrors(formData);
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = async () => {
-    if (!validateAll()) {
-      if (errors.fullName || errors.phone || errors.location)
+  const handleSave = async ({ navigateAfterSave = true } = {}) => {
+    const validationErrors = computeProfileErrors(formData);
+    const errorKeys = Object.keys(validationErrors);
+    if (errorKeys.length > 0) {
+      setErrors(validationErrors);
+      if (validationErrors.fullName || validationErrors.phone || validationErrors.location)
         setActiveSection(1);
       else if (
-        errors.currentJobTitle ||
-        errors.currentCompany ||
-        errors.currentLPA ||
-        errors.yearsOfExperience
+        validationErrors.currentJobTitle ||
+        validationErrors.currentCompany ||
+        validationErrors.currentLPA ||
+        validationErrors.yearsOfExperience
       )
         setActiveSection(2);
       else if (
-        errors.targetJobTitle ||
-        errors.expectedLPA ||
-        errors.preferredLocations ||
-        errors.jobType
+        validationErrors.targetJobTitle ||
+        validationErrors.expectedLPA ||
+        validationErrors.preferredLocations ||
+        validationErrors.jobType
       )
         setActiveSection(3);
-      else if (errors.skills) setActiveSection(4);
-      return;
+      else if (validationErrors.skills) setActiveSection(4);
+
+      const firstMsg = validationErrors[errorKeys[0]];
+      toast.error(
+        `Complete required fields in sections 1–4 before saving. ${firstMsg || ""}`,
+      );
+      return false;
     }
 
     setLoading(true);
@@ -117,7 +177,10 @@ function Profile() {
         { headers: getAuthHeader() },
       );
 
-      setOriginalData(response.data.profile);
+      const saved = normalizeProfileFromApi(response.data.profile);
+      setFormData(saved);
+      setOriginalData(saved);
+      setErrors({});
 
       const user = JSON.parse(localStorage.getItem("user") || "{}");
       localStorage.setItem(
@@ -130,15 +193,22 @@ function Profile() {
 
       window.dispatchEvent(new Event("authChange"));
       toast.success("Profile saved successfully!");
-      navigate("/");
+      if (navigateAfterSave) navigate("/");
+      return true;
     } catch (error) {
       console.error("Failed to save profile:", error);
       toast.error(
         error.response?.data?.message || "Failed to save profile.",
       );
+      return false;
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSaveAndNext = async () => {
+    const ok = await handleSave({ navigateAfterSave: false });
+    if (ok) setActiveSection((s) => (s < 9 ? s + 1 : s));
   };
 
   const handleDiscard = () => {
@@ -152,6 +222,11 @@ function Profile() {
     { number: 2, title: "Current Position", icon: Briefcase },
     { number: 3, title: "Job Preferences", icon: Target },
     { number: 4, title: "Skills & Resume", icon: Zap },
+    { number: 5, title: "Address & Socials", icon: MapPin },
+    { number: 6, title: "Eligibility", icon: Shield },
+    { number: 7, title: "Experience", icon: GraduationCap },
+    { number: 8, title: "Education", icon: GraduationCap },
+    { number: 9, title: "EEO (Optional)", icon: BadgeCheck },
   ];
 
   const renderSection = () => {
@@ -188,6 +263,16 @@ function Profile() {
             errors={errors}
           />
         );
+      case 5:
+        return <AddressSocialsSection formData={formData} setFormData={setFormData} />;
+      case 6:
+        return <EligibilitySection formData={formData} setFormData={setFormData} />;
+      case 7:
+        return <ExperienceSection formData={formData} setFormData={setFormData} />;
+      case 8:
+        return <EducationSection formData={formData} setFormData={setFormData} />;
+      case 9:
+        return <EEOSection formData={formData} setFormData={setFormData} />;
       default:
         return null;
     }
@@ -278,6 +363,22 @@ function Profile() {
           <div className="glass rounded-2xl p-6 lg:p-8 shadow-glass">
             {renderSection()}
 
+            {Object.keys(errors).length > 0 && (
+              <div
+                className="mt-8 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/90"
+                role="alert"
+              >
+                <p className="font-medium text-amber-100">Fix these before saving</p>
+                <ul className="mt-2 list-disc list-inside space-y-1 text-amber-200/85">
+                  {Object.entries(errors)
+                    .slice(0, 6)
+                    .map(([key, msg]) => (
+                      <li key={key}>{msg}</li>
+                    ))}
+                </ul>
+              </div>
+            )}
+
             <div className="flex justify-between mt-8 pt-6 border-t border-white/[0.06]">
               <Button
                 variant="ghost"
@@ -286,14 +387,36 @@ function Profile() {
               >
                 Discard Changes
               </Button>
-              <Button
-                variant="primary"
-                onClick={handleSave}
-                loading={loading}
-                size="lg"
-              >
-                Save Changes
-              </Button>
+              <div className="flex gap-2">
+                {activeSection >= 5 && activeSection < 9 && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => setActiveSection((s) => (s < 9 ? s + 1 : s))}
+                    disabled={loading}
+                  >
+                    Skip
+                  </Button>
+                )}
+                {activeSection < 9 ? (
+                  <Button
+                    variant="primary"
+                    onClick={handleSaveAndNext}
+                    loading={loading}
+                    size="lg"
+                  >
+                    Save & Next
+                  </Button>
+                ) : (
+                  <Button
+                    variant="primary"
+                    onClick={handleSave}
+                    loading={loading}
+                    size="lg"
+                  >
+                    Save Changes
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>

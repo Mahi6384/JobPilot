@@ -1,7 +1,11 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || (import.meta.env.MODE === 'development' ? "http://localhost:5000" : "https://jobpilot-production-3ba1.up.railway.app"),
+  baseURL:
+    import.meta.env.VITE_API_URL ||
+    (import.meta.env.MODE === "development"
+      ? "http://localhost:5000"
+      : "https://jobpilot-production-3ba1.up.railway.app"),
 });
 
 api.interceptors.request.use(
@@ -14,7 +18,7 @@ api.interceptors.request.use(
   },
   (error) => {
     return Promise.reject(error);
-  }
+  },
 );
 
 api.interceptors.response.use(
@@ -26,7 +30,7 @@ api.interceptors.response.use(
       window.location.href = "/login";
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export default api;

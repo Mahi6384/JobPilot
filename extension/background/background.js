@@ -1064,7 +1064,6 @@ async function injectNaukriScriptStack(tabId) {
     "utils/formFiller.js",
     "utils/panelKernel.js",
     "utils/resumeFile.js",
-    "utils/naukriDebug.js",
     "content-scripts/naukri.js",
   ];
 

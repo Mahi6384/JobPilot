@@ -12,6 +12,7 @@ if (!globalThis.__JOBPILOT_LI_INIT__) {
   const MAX_MODAL_STEPS = 25;
 
   let _resumeData = null;
+  let _jobContext = null;
 
   const YES_NO_DEFAULTS = {
     authorize: "Yes",
@@ -69,6 +70,7 @@ if (!globalThis.__JOBPILOT_LI_INIT__) {
     if (message.action !== "applyToJob") return;
 
     _resumeData = message.resumeData || null;
+    _jobContext = message.jobContext || null;
     log.info("Received applyToJob", {
       hasResumeData: !!_resumeData,
       resumeKeys: _resumeData ? Object.keys(_resumeData) : [],
@@ -454,6 +456,34 @@ if (!globalThis.__JOBPILOT_LI_INIT__) {
           _setNativeValue(field, yesNoVal);
           log.info(`YesNo: "${label}" → "${yesNoVal}"`);
           filled++;
+          continue;
+        }
+
+        // AI fallback: only for long-answer questions we couldn't map/fill.
+        try {
+          if (typeof fillLongAnswerWithAI === "function") {
+            const didAI = await fillLongAnswerWithAI(
+              field,
+              label,
+              _resumeData,
+              _jobContext,
+              {
+                onSkip: (d) =>
+                  log.info(
+                    "AI skip",
+                    d?.reason || "",
+                    (d?.label || "").slice(0, 80)
+                  ),
+              }
+            );
+            if (didAI) {
+              log.info(`AI filled: "${label}"`);
+              filled++;
+              continue;
+            }
+          }
+        } catch (e) {
+          log.warn("AI fill failed:", e?.message || String(e));
         }
       }
     }

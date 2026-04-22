@@ -10,12 +10,14 @@ if (!globalThis.__JOBPILOT_LEVER_INIT__) {
 
   let _resumeData = null;
   let _resumeAttachment = null;
+  let _jobContext = null;
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.action !== "applyToJob") return;
 
     _resumeData = message.resumeData || null;
     _resumeAttachment = message.resumeAttachment || null;
+    _jobContext = message.jobContext || null;
 
     runOneShotLever()
       .then((r) => sendResponse(r))
@@ -91,6 +93,35 @@ if (!globalThis.__JOBPILOT_LEVER_INIT__) {
       }
     } catch (e) {
       log.warn("fillAllFields failed:", e?.message || String(e));
+    }
+
+    // AI fallback for unknown long-answer questions (never overwrites).
+    try {
+      if (typeof fillLongAnswerWithAI === "function") {
+        const candidates = Array.from(root.querySelectorAll("textarea"));
+        for (const el of candidates) {
+          if (!el || !el.isConnected) continue;
+          if (String(el.value || "").trim()) continue;
+          const label =
+            (typeof globalThis.getFieldLabel === "function"
+              ? globalThis.getFieldLabel(el)
+              : el.getAttribute("aria-label") ||
+                el.getAttribute("placeholder") ||
+                el.getAttribute("name") ||
+                "") || "";
+
+          const did = await fillLongAnswerWithAI(el, label, _resumeData, _jobContext, {
+            onSkip: (d) =>
+              log.info("AI skip", d?.reason || "", (d?.label || "").slice(0, 80)),
+          });
+          if (did) {
+            filled++;
+            await delay(150);
+          }
+        }
+      }
+    } catch (e) {
+      log.warn("AI long-answer fill failed:", e?.message || String(e));
     }
 
     log.info("Filled fields:", filled);

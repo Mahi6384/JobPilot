@@ -149,11 +149,13 @@ async function handleAutofillCurrentTab() {
   const injectOk = await injectScripts(
     tabId,
     [
+      "utils/api.js",
       "utils/dom.js",
       "utils/resolveLabel.js",
       "utils/formFiller.js",
       "utils/panelKernel.js",
       "utils/resumeFile.js",
+      ...(isWorkday ? ["content-scripts/workday.js"] : []),
     ],
     { allFrames: isWorkday }
   );
@@ -164,6 +166,30 @@ async function handleAutofillCurrentTab() {
     resumeAttachment = await getResumeFileAsBase64();
   } catch (e) {
     logger.warn(`[JobPilot][Autofill] Resume not attached: ${e.message}`);
+  }
+
+  // Workday: use the dedicated content script in one-shot mode so it can:
+  // - click Add Experience/Education
+  // - fill listbox dropdown questions
+  // - fill AI long answers safely
+  if (isWorkday) {
+    try {
+      const resp = await sendMessageWithTimeout(
+        tabId,
+        {
+          action: "applyToJob",
+          resumeData: state.resumeData,
+          resumeAttachment,
+          jobContext: null,
+          mode: "oneShot",
+        },
+        45000
+      );
+      if (resp?.error) return { error: resp.error };
+      return { ok: true, filled: resp?.filled ?? 0, mode: "workday_oneShot" };
+    } catch (e) {
+      return { error: e?.message || "workday_autofill_failed" };
+    }
   }
 
   // Execute a one-shot fill inside the tab. No navigation / submit clicks.
@@ -458,6 +484,7 @@ async function processOneJob(application, jobUrl, platform, log) {
     } else if (isLinkedIn) {
       log.step("inject", "linkedin");
       await injectScripts(tab.id, [
+        "utils/api.js",
         "utils/dom.js",
         "utils/formFiller.js",
         "content-scripts/linkedin.js",
@@ -467,6 +494,7 @@ async function processOneJob(application, jobUrl, platform, log) {
       await injectScripts(
         tab.id,
         [
+          "utils/api.js",
           "utils/dom.js",
           "utils/resolveLabel.js",
           "utils/formFiller.js",
@@ -479,6 +507,7 @@ async function processOneJob(application, jobUrl, platform, log) {
     } else if (isGreenhouse) {
       log.step("inject", "greenhouse");
       await injectScripts(tab.id, [
+        "utils/api.js",
         "utils/dom.js",
         "utils/resolveLabel.js",
         "utils/formFiller.js",
@@ -489,6 +518,7 @@ async function processOneJob(application, jobUrl, platform, log) {
     } else if (isLever) {
       log.step("inject", "lever");
       await injectScripts(tab.id, [
+        "utils/api.js",
         "utils/dom.js",
         "utils/resolveLabel.js",
         "utils/formFiller.js",
@@ -533,6 +563,11 @@ async function processOneJob(application, jobUrl, platform, log) {
           action: "applyToJob",
           resumeData: state.resumeData,
           resumeAttachment,
+          jobContext: {
+            jobTitle: application?.jobId?.title || null,
+            companyName: application?.jobId?.company || null,
+            jobDescription: application?.jobId?.description || null,
+          },
         },
         CONTENT_SCRIPT_TIMEOUT_MS,
         isLinkedIn ? 4 : 1

@@ -10,6 +10,7 @@ const logger = require("./utils/logger");
 const jobRoutes = require("./routes/jobRoutes");
 const applicationRoutes = require("./routes/applicationRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const aiRoutes = require("./routes/aiRoutes");
 dotenv.config();
 
 try {
@@ -50,6 +51,7 @@ app.use("/api/onboarding", onboardingRoutes);
 app.use("/api/jobs", jobRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/ai", aiRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);

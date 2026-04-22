@@ -18,6 +18,8 @@ const logoutBtn = document.getElementById("logoutBtn");
 const extId = document.getElementById("extId");
 const autofillBtn = document.getElementById("autofillBtn");
 const completeProfileBtn = document.getElementById("completeProfileBtn");
+const stickyToggle = document.getElementById("stickyToggle");
+const closeJobTabBtn = document.getElementById("closeJobTabBtn");
 
 let pollTimer = null;
 
@@ -28,6 +30,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const mode = await getConfig("apiMode");
   if (mode === "dev") devToggle.classList.add("active");
+
+  const sticky = await getConfig("stickyTabs");
+  if (sticky) stickyToggle?.classList.add("active");
 
   const token = await getAuthToken();
   if (token) {
@@ -159,6 +164,33 @@ devToggle.addEventListener("click", async () => {
   devToggle.classList.toggle("active", newMode === "dev");
 });
 
+stickyToggle?.addEventListener("click", async () => {
+  const current = await getConfig("stickyTabs");
+  const next = !current;
+  await setConfig("stickyTabs", next);
+  stickyToggle.classList.toggle("active", next);
+});
+
+closeJobTabBtn?.addEventListener("click", async () => {
+  try {
+    closeJobTabBtn.disabled = true;
+    const res = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ action: "closeStickyJobTab" }, resolve);
+    });
+    if (!res) throw new Error("No response from background worker");
+    if (res.error) throw new Error(res.error);
+    closeJobTabBtn.textContent = "Closed";
+    setTimeout(() => {
+      closeJobTabBtn.textContent = "Close job tab";
+      closeJobTabBtn.disabled = false;
+    }, 1200);
+  } catch (e) {
+    showError(e?.message || String(e));
+    closeJobTabBtn.textContent = "Close job tab";
+    closeJobTabBtn.disabled = false;
+  }
+});
+
 // ── Dashboard ────────────────────────────────────────────────────────────────
 
 async function showDashboard() {
@@ -218,6 +250,11 @@ async function refreshStatus() {
     statApplied.textContent = status.processed || 0;
     statFailed.textContent = status.failed || 0;
     statSkipped.textContent = status.skipped || 0;
+
+    // Show close button only when we have a sticky-kept tab.
+    if (closeJobTabBtn) {
+      closeJobTabBtn.classList.toggle("hidden", !status?.stickyJobTabId);
+    }
 
     if (status.lastError) {
       queueLabel.textContent += ` (last error: ${status.lastError})`;

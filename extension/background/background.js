@@ -22,6 +22,7 @@ const state = {
   resumeData: null,
   lastPoll: null,
   lastError: null,
+  stickyJobTabId: null,
 };
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -98,12 +99,28 @@ async function handleMessage(msg) {
     case "autofillCurrentTab":
       return await handleAutofillCurrentTab();
 
+    case "closeStickyJobTab":
+      return await handleCloseStickyJobTab();
+
     case "getProfileUrl":
       return await handleGetProfileUrl();
 
     default:
       return { error: "unknown_action" };
   }
+}
+
+async function handleCloseStickyJobTab() {
+  const tabId = state.stickyJobTabId;
+  if (!tabId) return { ok: true, closed: false };
+  try {
+    await chrome.tabs.remove(tabId);
+  } catch (e) {
+    return { error: e?.message || "close_failed" };
+  } finally {
+    state.stickyJobTabId = null;
+  }
+  return { ok: true, closed: true };
 }
 
 async function handleGetProfileUrl() {
@@ -312,6 +329,7 @@ function getSnapshot() {
     processed: state.processed,
     failed: state.failed,
     skipped: state.skipped,
+    stickyJobTabId: state.stickyJobTabId,
     currentJob: state.currentApp
       ? {
           id: state.currentApp._id,
@@ -440,6 +458,7 @@ async function processOneJob(application, jobUrl, platform, log) {
   log.step("status", "in_progress");
 
   const tab = await chrome.tabs.create({ url: jobUrl, active: false });
+  state.stickyJobTabId = tab?.id || null;
   log.info(`Tab ${tab.id} opened`);
 
   try {
@@ -642,12 +661,18 @@ async function processOneJob(application, jobUrl, platform, log) {
       const keepOpenForDebug =
         /naukri\.com/i.test(jobUrl) && (await readNaukriTabDebugPause(tab.id));
 
-      if (keepOpenForDebug) {
+      const stickyTabs = Boolean(await getConfig("stickyTabs"));
+
+      if (keepOpenForDebug || stickyTabs) {
         _naukriDebugStopQueueAfterJob = true;
-        logger.info("[JobPilot][Debug] Auto-flow paused for manual debugging");
-        logger.info(
-          "[JobPilot][Debug] Naukri tab left open; remaining jobs in this batch were not started"
-        );
+        if (keepOpenForDebug) {
+          logger.info("[JobPilot][Debug] Auto-flow paused for manual debugging");
+          logger.info(
+            "[JobPilot][Debug] Naukri tab left open; remaining jobs in this batch were not started"
+          );
+        } else {
+          logger.info("[JobPilot][Sticky] Job tab kept open (stickyTabs enabled)");
+        }
         try {
           await chrome.tabs.update(tab.id, { active: true });
         } catch (e) {
@@ -655,6 +680,7 @@ async function processOneJob(application, jobUrl, platform, log) {
         }
       } else {
         await chrome.tabs.remove(tab.id);
+        if (state.stickyJobTabId === tab.id) state.stickyJobTabId = null;
       }
     } catch (e) {
       logger.warn(`Tab cleanup: ${e.message}`);

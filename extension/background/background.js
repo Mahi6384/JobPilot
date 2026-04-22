@@ -24,42 +24,6 @@ const state = {
   lastError: null,
 };
 
-async function getJpAutofillDebug() {
-  try {
-    const r = await chrome.storage.local.get("jpConfig");
-    return !!r.jpConfig?.autofillDebug;
-  } catch {
-    return false;
-  }
-}
-
-/** Safe snapshot for service-worker logs (manual autofill / resume load). */
-function resumeDataSummaryForLog(rd) {
-  if (!rd) return null;
-  const maskEmail = (e) => {
-    const parts = String(e).split("@");
-    if (parts.length !== 2) return "(redacted)";
-    const u = parts[0];
-    return (u.length ? u[0] + "..." : "?") + "@" + parts[1];
-  };
-  return {
-    name: rd.name,
-    email: rd.email ? maskEmail(rd.email) : null,
-    hasPhone: !!rd.phone,
-    location: rd.location,
-    currentCompany: rd.experience?.currentCompany,
-    currentTitle: rd.experience?.currentTitle,
-    expYears: rd.experience?.years,
-    entries: rd.experience?.entries?.length ?? 0,
-    education: Array.isArray(rd.education) ? rd.education.length : 0,
-    skills: rd.skills?.length ?? 0,
-    hasResumeFile: rd.hasResumeFile,
-    missingFieldsCount: Array.isArray(rd.missingFields)
-      ? rd.missingFields.length
-      : null,
-  };
-}
-
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -178,12 +142,6 @@ async function handleAutofillCurrentTab() {
     return { error: "no_resume_data" };
   }
 
-  const autofillDebug = await getJpAutofillDebug();
-  if (autofillDebug) {
-    logger.info("[Autofill][debug] Manual autofill profile snapshot:", resumeDataSummaryForLog(state.resumeData));
-    logger.info("[Autofill][debug] Tab URL:", url);
-  }
-
   const isWorkday = /(\.|^)workday\.com|(\.|^)myworkdayjobs\.com/i.test(url);
 
   // Inject shared fillers. For Workday we inject into all frames since forms
@@ -211,10 +169,9 @@ async function handleAutofillCurrentTab() {
   // Execute a one-shot fill inside the tab. No navigation / submit clicks.
   const exec = await chrome.scripting.executeScript({
     target: { tabId, allFrames: isWorkday },
-    args: [state.resumeData, resumeAttachment, { autofillDebug }],
-    func: (resumeData, resumeAttachmentArg, opts) => {
+    args: [state.resumeData, resumeAttachment],
+    func: (resumeData, resumeAttachmentArg) => {
       try {
-        globalThis.__JOBPILOT_AUTOFILL_DEBUG__ = !!(opts && opts.autofillDebug);
         let filled = 0;
 
         // Try resume upload if we have a PDF and helper exists.
@@ -239,9 +196,6 @@ async function handleAutofillCurrentTab() {
               );
               if (ok) {
                 filled++;
-                if (globalThis.__JOBPILOT_AUTOFILL_DEBUG__) {
-                  console.log("[JobPilot][Autofill] Resume file attached to input");
-                }
               }
             }
           }
@@ -281,12 +235,6 @@ async function handleAutofillCurrentTab() {
     (sum, r) => sum + (typeof r.filled === "number" ? r.filled : 0),
     0
   );
-  if (autofillDebug && results.length) {
-    logger.info(
-      "[Autofill][debug] Injected frames:",
-      results.map((r) => ({ frame: r.frame, filled: r.filled, href: r.href }))
-    );
-  }
   return { ok: true, filled: totalFilled };
 }
 
@@ -576,11 +524,6 @@ async function processOneJob(application, jobUrl, platform, log) {
       }
     }
 
-    const debugAutofill = await getJpAutofillDebug();
-    if (debugAutofill) {
-      log.info("[Autofill][debug] Queue apply profile snapshot:", resumeDataSummaryForLog(state.resumeData));
-    }
-
     // ── Phase 1: Content script apply attempt (with retry) ──
     let csResult;
     try {
@@ -590,7 +533,6 @@ async function processOneJob(application, jobUrl, platform, log) {
           action: "applyToJob",
           resumeData: state.resumeData,
           resumeAttachment,
-          debugAutofill,
         },
         CONTENT_SCRIPT_TIMEOUT_MS,
         isLinkedIn ? 4 : 1
@@ -961,12 +903,6 @@ async function loadResumeData() {
     if (state.resumeData) {
       await setStoredResumeData(state.resumeData);
       logger.info("Resume data loaded:", state.resumeData.name);
-      if (await getJpAutofillDebug()) {
-        logger.info(
-          "[Autofill][debug] resume-data from API:",
-          resumeDataSummaryForLog(state.resumeData)
-        );
-      }
     }
   } catch (e) {
     const cached = await getStoredResumeData();

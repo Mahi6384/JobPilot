@@ -1,36 +1,3 @@
-/** Set by background / content scripts when `jpConfig.autofillDebug` is true. */
-function jpAutofillDebugEnabled() {
-  return !!globalThis.__JOBPILOT_AUTOFILL_DEBUG__;
-}
-
-function jpAutofillLog(...args) {
-  if (!jpAutofillDebugEnabled()) return;
-  console.log("[JobPilot][Autofill]", ...args);
-}
-
-function summarizeResumeDataForLog(rd) {
-  if (!rd) return null;
-  const maskEmail = (e) => {
-    const parts = String(e).split("@");
-    if (parts.length !== 2) return "(redacted)";
-    const u = parts[0];
-    return (u.length ? u[0] + "…" : "?") + "@" + parts[1];
-  };
-  return {
-    name: rd.name,
-    email: rd.email ? maskEmail(rd.email) : null,
-    hasPhone: !!rd.phone,
-    location: rd.location,
-    currentCompany: rd.experience?.currentCompany,
-    currentTitle: rd.experience?.currentTitle,
-    expYears: rd.experience?.years,
-    entriesCount: rd.experience?.entries?.length ?? 0,
-    educationCount: Array.isArray(rd.education) ? rd.education.length : 0,
-    skillsCount: Array.isArray(rd.skills) ? rd.skills.length : 0,
-    hasResumeFile: !!rd.hasResumeFile,
-  };
-}
-
 function _fieldLabelForLog(el) {
   if (!el) return "";
   return typeof getFieldLabel === "function"
@@ -328,12 +295,6 @@ function fillTextField(field, resumeData, hooks, labelOverride) {
       /* ignore */
     }
   }
-  jpAutofillLog("filled text", {
-    key: valueKey,
-    fallback: usedFallback,
-    label: String(label).slice(0, 120),
-    value: String(value).slice(0, 80),
-  });
   if (usedFallback && typeof console !== "undefined" && console.log) {
     console.log(
       "[JobPilot][Naukri][Fill] generic fallback",
@@ -402,11 +363,6 @@ function fillDropdown(select, resumeData, hooks) {
       select.value = exact.value;
       select.dispatchEvent(new Event("change", { bubbles: true }));
       emitFill(mapped ? mapped.key : "select", exact.value);
-      jpAutofillLog("filled select (exact)", {
-        key: mapped?.key,
-        label: String(label).slice(0, 120),
-        option: String(exact.value).slice(0, 80),
-      });
       return true;
     }
 
@@ -420,11 +376,6 @@ function fillDropdown(select, resumeData, hooks) {
       select.value = partial.value;
       select.dispatchEvent(new Event("change", { bubbles: true }));
       emitFill(mapped ? mapped.key : "select", partial.value);
-      jpAutofillLog("filled select (partial)", {
-        key: mapped?.key,
-        label: String(label).slice(0, 120),
-        option: String(partial.value).slice(0, 80),
-      });
       return true;
     }
   }
@@ -434,10 +385,6 @@ function fillDropdown(select, resumeData, hooks) {
     select.value = options[0].value;
     select.dispatchEvent(new Event("change", { bubbles: true }));
     emitFill(mapped ? mapped.key : "select_first_option", options[0].value);
-    jpAutofillLog("filled select (first option fallback)", {
-      key: mapped?.key,
-      label: String(label).slice(0, 120),
-    });
     return true;
   }
   return false;
@@ -570,10 +517,6 @@ function fillRadioGroup(radios, hooks) {
       });
     } catch { /* ignore */ }
   }
-  jpAutofillLog("radio group", {
-    key: isResync ? "radio_group_resync" : "radio_group",
-    value: focusRadio.value || focusRadio.id || true,
-  });
   return true;
 }
 
@@ -624,16 +567,8 @@ function _queryAllDeep(root, selector) {
 }
 
 function fillAllFields(container, resumeData, hooks) {
-  jpAutofillLog("fillAllFields start", {
-    href: typeof location !== "undefined" ? location.href : "",
-    frame:
-      typeof window !== "undefined" && window !== window.top ? "iframe" : "top",
-    resume: summarizeResumeDataForLog(resumeData),
-  });
-
   let filled = 0;
   const root = container || document;
-  const skippedEmptyLabels = [];
 
   _queryAllDeep(
     root,
@@ -643,13 +578,6 @@ function fillAllFields(container, resumeData, hooks) {
     const did = fillTextField(f, resumeData, hooks);
     if (did) {
       filled++;
-    } else if (
-      jpAutofillDebugEnabled() &&
-      skippedEmptyLabels.length < 35 &&
-      !(f.value && f.value.trim() !== "")
-    ) {
-      const lb = _fieldLabelForLog(f);
-      if (lb) skippedEmptyLabels.push(lb.slice(0, 100));
     }
   });
 
@@ -669,12 +597,6 @@ function fillAllFields(container, resumeData, hooks) {
   });
   radioGroups.forEach((radios) => {
     if (fillRadioGroup(radios, hooks)) filled++;
-  });
-
-  jpAutofillLog("fillAllFields complete", {
-    filled,
-    unfilledEmptyInputLabelsSample:
-      skippedEmptyLabels.length > 0 ? skippedEmptyLabels : undefined,
   });
 
   return filled;

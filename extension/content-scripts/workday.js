@@ -19,7 +19,6 @@ if (!globalThis.__JOBPILOT_WD_INIT__) {
 
     _resumeData = message.resumeData || null;
     _resumeAttachment = message.resumeAttachment || null;
-    globalThis.__JOBPILOT_AUTOFILL_DEBUG__ = !!message.debugAutofill;
 
     withTimeout(runGuidedWorkdayFlow(), TIMEOUT_MS)
       .then((result) => sendResponse(result))

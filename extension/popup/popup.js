@@ -14,7 +14,6 @@ const statFailed = document.getElementById("statFailed");
 const statSkipped = document.getElementById("statSkipped");
 const autoBadge = document.getElementById("autoBadge");
 const devToggle = document.getElementById("devToggle");
-const autofillDebugToggle = document.getElementById("autofillDebugToggle");
 const logoutBtn = document.getElementById("logoutBtn");
 const extId = document.getElementById("extId");
 const autofillBtn = document.getElementById("autofillBtn");
@@ -29,9 +28,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const mode = await getConfig("apiMode");
   if (mode === "dev") devToggle.classList.add("active");
-
-  const autofillDbg = await getConfig("autofillDebug");
-  if (autofillDbg) autofillDebugToggle?.classList.add("active");
 
   const token = await getAuthToken();
   if (token) {
@@ -161,13 +157,6 @@ devToggle.addEventListener("click", async () => {
   const newMode = currentMode === "dev" ? "prod" : "dev";
   await setConfig("apiMode", newMode);
   devToggle.classList.toggle("active", newMode === "dev");
-});
-
-autofillDebugToggle?.addEventListener("click", async () => {
-  const on = await getConfig("autofillDebug");
-  const next = !on;
-  await setConfig("autofillDebug", next);
-  autofillDebugToggle.classList.toggle("active", next);
 });
 
 // ── Dashboard ────────────────────────────────────────────────────────────────

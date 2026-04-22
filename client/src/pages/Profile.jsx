@@ -19,52 +19,6 @@ const API_BASE =
     ? "http://localhost:5000"
     : "https://jobpilot-production-3ba1.up.railway.app");
 
-function shouldLogProfileDebug() {
-  if (import.meta.env.DEV) return true;
-  try {
-    return localStorage.getItem("jobpilotDebugProfile") === "1";
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Picks ATS / extended fields so console output always shows names like `gender` (under eeo) and experience arrays.
- * Top-level `gender` does not exist on the User model — it is `eeo.gender`.
- */
-function pickExtendedProfileForLog(profile) {
-  if (!profile || typeof profile !== "object") {
-    return { _note: "not an object", value: profile };
-  }
-  const p = profile;
-  return {
-    address: p.address ?? null,
-    socials: p.socials ?? null,
-    workEligibility: p.workEligibility ?? null,
-    experienceEntries: p.experienceEntries ?? null,
-    educationEntries: p.educationEntries ?? null,
-    eeo: p.eeo ?? null,
-    flatHints: {
-      "eeo.gender": p.eeo?.gender ?? "(missing)",
-      experienceEntriesCount: Array.isArray(p.experienceEntries)
-        ? p.experienceEntries.length
-        : "(not an array)",
-      educationEntriesCount: Array.isArray(p.educationEntries)
-        ? p.educationEntries.length
-        : "(not an array)",
-    },
-  };
-}
-
-/** Logs profile payloads to the browser console (dev always; prod if localStorage jobpilotDebugProfile=1). */
-function logProfileDebug(label, payload) {
-  if (!shouldLogProfileDebug()) return;
-  console.groupCollapsed(`[JobPilot Profile] ${label}`);
-  console.log("extended fields (address, socials, workEligibility, experienceEntries, educationEntries, eeo)", pickExtendedProfileForLog(payload));
-  console.log("full profile object", payload);
-  console.groupEnd();
-}
-
 /** Coerce API payload so validation and inputs see stable array shapes. */
 function normalizeProfileFromApi(profile) {
   if (!profile || typeof profile !== "object") return {};
@@ -112,8 +66,6 @@ function Profile() {
         });
         const raw = response.data.profile;
         const normalized = normalizeProfileFromApi(raw);
-        logProfileDebug("GET /api/onboarding/profile (raw)", raw);
-        logProfileDebug("GET /api/onboarding/profile (normalized)", normalized);
         if (!cancelled) {
           setFormData(normalized);
           setOriginalData(normalized);

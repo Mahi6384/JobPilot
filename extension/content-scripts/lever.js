@@ -16,7 +16,6 @@ if (!globalThis.__JOBPILOT_LEVER_INIT__) {
 
     _resumeData = message.resumeData || null;
     _resumeAttachment = message.resumeAttachment || null;
-    globalThis.__JOBPILOT_AUTOFILL_DEBUG__ = !!message.debugAutofill;
 
     runOneShotLever()
       .then((r) => sendResponse(r))
@@ -95,9 +94,6 @@ if (!globalThis.__JOBPILOT_LEVER_INIT__) {
     }
 
     log.info("Filled fields:", filled);
-    if (globalThis.__JOBPILOT_AUTOFILL_DEBUG__) {
-      console.log("[JobPilot][Autofill][Lever] run complete", { filled, href: location.href });
-    }
     return { success: true, message: "filled", filled };
   }
 

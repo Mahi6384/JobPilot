@@ -69,7 +69,6 @@ if (!globalThis.__JOBPILOT_LI_INIT__) {
     if (message.action !== "applyToJob") return;
 
     _resumeData = message.resumeData || null;
-    globalThis.__JOBPILOT_AUTOFILL_DEBUG__ = !!message.debugAutofill;
     log.info("Received applyToJob", {
       hasResumeData: !!_resumeData,
       resumeKeys: _resumeData ? Object.keys(_resumeData) : [],

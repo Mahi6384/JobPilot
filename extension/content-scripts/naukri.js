@@ -114,7 +114,6 @@ if (!globalThis.__JOBPILOT_NAUKRI_INIT__) {
     if (message.action === "applyToJob") {
       _naukriResumeData = message.resumeData || null;
       _resumeAttachment = message.resumeAttachment || null;
-      globalThis.__JOBPILOT_AUTOFILL_DEBUG__ = !!message.debugAutofill;
       _log.info("Received applyToJob message", {
         hasResumePdf: !!(_resumeAttachment && _resumeAttachment.base64),
       });

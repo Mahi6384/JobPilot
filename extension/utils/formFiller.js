@@ -1,7 +1,60 @@
+/** Set by background / content scripts when `jpConfig.autofillDebug` is true. */
+function jpAutofillDebugEnabled() {
+  return !!globalThis.__JOBPILOT_AUTOFILL_DEBUG__;
+}
+
+function jpAutofillLog(...args) {
+  if (!jpAutofillDebugEnabled()) return;
+  console.log("[JobPilot][Autofill]", ...args);
+}
+
+function summarizeResumeDataForLog(rd) {
+  if (!rd) return null;
+  const maskEmail = (e) => {
+    const parts = String(e).split("@");
+    if (parts.length !== 2) return "(redacted)";
+    const u = parts[0];
+    return (u.length ? u[0] + "…" : "?") + "@" + parts[1];
+  };
+  return {
+    name: rd.name,
+    email: rd.email ? maskEmail(rd.email) : null,
+    hasPhone: !!rd.phone,
+    location: rd.location,
+    currentCompany: rd.experience?.currentCompany,
+    currentTitle: rd.experience?.currentTitle,
+    expYears: rd.experience?.years,
+    entriesCount: rd.experience?.entries?.length ?? 0,
+    educationCount: Array.isArray(rd.education) ? rd.education.length : 0,
+    skillsCount: Array.isArray(rd.skills) ? rd.skills.length : 0,
+    hasResumeFile: !!rd.hasResumeFile,
+  };
+}
+
+function _fieldLabelForLog(el) {
+  if (!el) return "";
+  return typeof getFieldLabel === "function"
+    ? getFieldLabel(el)
+    : el.getAttribute("aria-label") ||
+        el.getAttribute("placeholder") ||
+        el.getAttribute("name") ||
+        "";
+}
+
 const FIELD_MAP = [
   {
     patterns: [/full\s*name/i, /your\s*name/i, /^name$/i, /candidate\s*name/i, /applicant\s*name/i, /first\s*(?:and|&)?\s*last\s*name/i],
     key: "name",
+  },
+  {
+    // Workday: "Given Name(s)" / "First Name"
+    patterns: [/\bgiven\s*name/i, /\bfirst\s*name/i],
+    key: "firstName",
+  },
+  {
+    // Workday: "Family Name" / "Last Name" / "Surname"
+    patterns: [/\bfamily\s*name/i, /\blast\s*name/i, /\bsurname\b/i],
+    key: "lastName",
   },
   {
     patterns: [/e-?mail/i, /email\s*(?:address|id)/i],
@@ -60,7 +113,14 @@ const FIELD_MAP = [
     fallback: "30",
   },
   {
-    patterns: [/current\s*(?:company|employer|organi[sz]ation)/i, /present\s*(?:company|employer)/i],
+    patterns: [
+      /current\s*(?:company|employer|organi[sz]ation)/i,
+      /present\s*(?:company|employer)/i,
+      /most\s+recent\s+(?:employer|company)/i,
+      /previous\s*(?:company|employer)/i,
+      /\bemployer\b/i,
+      /\bcompany\s*name\b/i,
+    ],
     key: "currentCompany",
   },
   {
@@ -94,8 +154,16 @@ const FIELD_MAP = [
 function resolveValue(key, resumeData, fallback) {
   if (!resumeData) return fallback || null;
 
+  const fullName = String(resumeData.name || "").trim();
+  const nameParts = fullName.split(/\s+/).filter(Boolean);
+  const derivedFirstName = nameParts[0] || "";
+  const derivedLastName =
+    nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
+
   const directMap = {
     name: resumeData.name,
+    firstName: derivedFirstName,
+    lastName: derivedLastName,
     email: resumeData.email,
     phone: resumeData.phone,
     currentCtc: resumeData.currentCtc,
@@ -110,10 +178,24 @@ function resolveValue(key, resumeData, fallback) {
   switch (key) {
     case "yearsOfExperience":
       return String(resumeData.experience?.years ?? fallback ?? "0");
-    case "currentCompany":
-      return resumeData.experience?.currentCompany || fallback || "";
-    case "currentTitle":
-      return resumeData.experience?.currentTitle || fallback || "";
+    case "currentCompany": {
+      const direct = resumeData.experience?.currentCompany;
+      if (direct && String(direct).trim()) return String(direct).trim();
+      const entries = resumeData.experience?.entries || [];
+      const cur =
+        entries.find((e) => e && e.isCurrent) || entries[0];
+      const fromEntry = cur?.company && String(cur.company).trim();
+      return fromEntry || fallback || "";
+    }
+    case "currentTitle": {
+      const direct = resumeData.experience?.currentTitle;
+      if (direct && String(direct).trim()) return String(direct).trim();
+      const entries = resumeData.experience?.entries || [];
+      const cur =
+        entries.find((e) => e && e.isCurrent) || entries[0];
+      const fromEntry = cur?.title && String(cur.title).trim();
+      return fromEntry || fallback || "";
+    }
     case "noticePeriod":
       return fallback || "30";
     case "gender":
@@ -246,6 +328,12 @@ function fillTextField(field, resumeData, hooks, labelOverride) {
       /* ignore */
     }
   }
+  jpAutofillLog("filled text", {
+    key: valueKey,
+    fallback: usedFallback,
+    label: String(label).slice(0, 120),
+    value: String(value).slice(0, 80),
+  });
   if (usedFallback && typeof console !== "undefined" && console.log) {
     console.log(
       "[JobPilot][Naukri][Fill] generic fallback",
@@ -314,6 +402,11 @@ function fillDropdown(select, resumeData, hooks) {
       select.value = exact.value;
       select.dispatchEvent(new Event("change", { bubbles: true }));
       emitFill(mapped ? mapped.key : "select", exact.value);
+      jpAutofillLog("filled select (exact)", {
+        key: mapped?.key,
+        label: String(label).slice(0, 120),
+        option: String(exact.value).slice(0, 80),
+      });
       return true;
     }
 
@@ -327,6 +420,11 @@ function fillDropdown(select, resumeData, hooks) {
       select.value = partial.value;
       select.dispatchEvent(new Event("change", { bubbles: true }));
       emitFill(mapped ? mapped.key : "select", partial.value);
+      jpAutofillLog("filled select (partial)", {
+        key: mapped?.key,
+        label: String(label).slice(0, 120),
+        option: String(partial.value).slice(0, 80),
+      });
       return true;
     }
   }
@@ -336,6 +434,10 @@ function fillDropdown(select, resumeData, hooks) {
     select.value = options[0].value;
     select.dispatchEvent(new Event("change", { bubbles: true }));
     emitFill(mapped ? mapped.key : "select_first_option", options[0].value);
+    jpAutofillLog("filled select (first option fallback)", {
+      key: mapped?.key,
+      label: String(label).slice(0, 120),
+    });
     return true;
   }
   return false;
@@ -468,6 +570,10 @@ function fillRadioGroup(radios, hooks) {
       });
     } catch { /* ignore */ }
   }
+  jpAutofillLog("radio group", {
+    key: isResync ? "radio_group_resync" : "radio_group",
+    value: focusRadio.value || focusRadio.id || true,
+  });
   return true;
 }
 
@@ -518,15 +624,33 @@ function _queryAllDeep(root, selector) {
 }
 
 function fillAllFields(container, resumeData, hooks) {
+  jpAutofillLog("fillAllFields start", {
+    href: typeof location !== "undefined" ? location.href : "",
+    frame:
+      typeof window !== "undefined" && window !== window.top ? "iframe" : "top",
+    resume: summarizeResumeDataForLog(resumeData),
+  });
+
   let filled = 0;
   const root = container || document;
+  const skippedEmptyLabels = [];
 
   _queryAllDeep(
     root,
     "input[type='text'], input[type='number'], input[type='tel'], input[type='email'], input:not([type]), textarea"
   ).forEach((f) => {
     if (f.type === "hidden" || f.type === "file") return;
-    if (fillTextField(f, resumeData, hooks)) filled++;
+    const did = fillTextField(f, resumeData, hooks);
+    if (did) {
+      filled++;
+    } else if (
+      jpAutofillDebugEnabled() &&
+      skippedEmptyLabels.length < 35 &&
+      !(f.value && f.value.trim() !== "")
+    ) {
+      const lb = _fieldLabelForLog(f);
+      if (lb) skippedEmptyLabels.push(lb.slice(0, 100));
+    }
   });
 
   _queryAllDeep(root, "select").forEach((s) => {
@@ -545,6 +669,12 @@ function fillAllFields(container, resumeData, hooks) {
   });
   radioGroups.forEach((radios) => {
     if (fillRadioGroup(radios, hooks)) filled++;
+  });
+
+  jpAutofillLog("fillAllFields complete", {
+    filled,
+    unfilledEmptyInputLabelsSample:
+      skippedEmptyLabels.length > 0 ? skippedEmptyLabels : undefined,
   });
 
   return filled;

@@ -79,23 +79,91 @@ function SkillsResumeStep({ formData, setFormData, errors }) {
         { headers: { Authorization: `Bearer ${token}` } },
       );
 
-      const { skills, hasResumeFile } = response.data;
+      const {
+        skills,
+        hasResumeFile,
+        structured,
+        experienceEntries: expFromApi,
+        educationEntries: eduFromApi,
+      } = response.data;
+
+      const parsedExp = structured?.experienceEntries?.length
+        ? structured.experienceEntries
+        : expFromApi;
+      const parsedEdu = structured?.educationEntries?.length
+        ? structured.educationEntries
+        : eduFromApi;
+
       if (hasResumeFile) {
         toast.success("Resume saved — JobPilot can auto-upload it on Naukri.");
       }
-      if (skills && skills.length > 0) {
-        const currentSkills = new Set(formData.skills || []);
-        skills.forEach((s) => currentSkills.add(s));
 
-        setFormData({
-          ...formData,
-          skills: Array.from(currentSkills),
+      const isBlankObject = (obj) => {
+        if (!obj || typeof obj !== "object") return true;
+        return Object.values(obj).every((v) => {
+          if (v === null || v === undefined) return true;
+          if (typeof v === "string") return v.trim() === "";
+          if (typeof v === "number") return Number.isNaN(v);
+          if (typeof v === "boolean") return v === false;
+          return false;
         });
+      };
+      const isBlankEntriesArray = (arr) =>
+        Array.isArray(arr) && arr.length > 0 && arr.every((e) => isBlankObject(e));
+      const isMissingOrBlankArray = (arr) =>
+        !Array.isArray(arr) || arr.length === 0 || isBlankEntriesArray(arr);
+
+      // One functional update avoids stale state (skills merge overwriting exp/edu and vice versa).
+      setFormData((prev) => {
+        const next = { ...prev };
+
+        if (skills && skills.length > 0) {
+          const currentSkills = new Set(prev.skills || []);
+          skills.forEach((s) => currentSkills.add(s));
+          next.skills = Array.from(currentSkills);
+        }
+
+        if (isMissingOrBlankArray(prev.experienceEntries) && parsedExp?.length) {
+          next.experienceEntries = parsedExp;
+        }
+        if (isMissingOrBlankArray(prev.educationEntries) && parsedEdu?.length) {
+          next.educationEntries = parsedEdu;
+        }
+
+        next.socials = { ...(prev.socials || {}) };
+        if (!next.socials.githubUrl && structured?.socials?.githubUrl) {
+          next.socials.githubUrl = structured.socials.githubUrl;
+        }
+        if (!next.socials.portfolioUrl && structured?.socials?.portfolioUrl) {
+          next.socials.portfolioUrl = structured.socials.portfolioUrl;
+        }
+        if (!next.socials.twitterUrl && structured?.socials?.twitterUrl) {
+          next.socials.twitterUrl = structured.socials.twitterUrl;
+        }
+        if (!next.linkedinUrl && structured?.socials?.linkedinUrl) {
+          next.linkedinUrl = structured.socials.linkedinUrl;
+        }
+
+        const primary =
+          parsedExp?.find((e) => e?.isCurrent) || parsedExp?.[0];
+        if (primary?.title && !String(next.currentJobTitle || "").trim()) {
+          next.currentJobTitle = primary.title;
+        }
+        if (primary?.company && !String(next.currentCompany || "").trim()) {
+          next.currentCompany = primary.company;
+        }
+
+        return next;
+      });
+
+      if (skills && skills.length > 0) {
         toast.success(`Extracted ${skills.length} skills from your resume!`);
       } else {
-        toast.info(
-          "No common skills found. You can add them manually.",
-        );
+        toast.info("No common skills found. You can add them manually.");
+      }
+
+      if (parsedExp?.length || parsedEdu?.length) {
+        toast.success("Added experience/education from resume (edit in Profile).");
       }
     } catch (error) {
       console.error("Resume parsing error:", error);

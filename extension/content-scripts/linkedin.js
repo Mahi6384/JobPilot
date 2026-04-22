@@ -777,8 +777,28 @@ if (!globalThis.__JOBPILOT_LI_INIT__) {
       return _resumeData?.gpa || "3.5";
     }
 
-    if (lower.includes("salary") || lower.includes("ctc") || lower.includes("compensation")) {
-      return _resumeData?.currentCtc || _resumeData?.expectedSalary || "0";
+    if (
+      lower.includes("salary") ||
+      lower.includes("ctc") ||
+      lower.includes("compensation") ||
+      lower.includes("pay") ||
+      lower.includes("package") ||
+      lower.includes("remuneration")
+    ) {
+      const hasCtc =
+        /\bctc\b|\bcost\s*to\s*company\b|\blpa\b/i.test(lower);
+      if (!hasCtc) return null;
+
+      const isCurrent = /\bcurrent\b|\bpresent\b/i.test(lower);
+      const isExpected =
+        /\bexpected\b|\bdesired\b|\btarget\b|\bpreferred\b|\bexpectation\b|\brange\b/i.test(
+          lower
+        );
+
+      // Tight rule: only fill when qualifier AND CTC are present.
+      if (isCurrent && !isExpected) return _resumeData?.currentCtc || null;
+      if (isExpected && !isCurrent) return _resumeData?.expectedSalary || null;
+      return null;
     }
 
     if (

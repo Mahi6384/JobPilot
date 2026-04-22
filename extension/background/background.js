@@ -505,6 +505,7 @@ async function processOneJob(application, jobUrl, platform, log) {
       await injectScripts(tab.id, [
         "utils/api.js",
         "utils/dom.js",
+        "utils/resolveLabel.js",
         "utils/formFiller.js",
         "content-scripts/linkedin.js",
       ]);

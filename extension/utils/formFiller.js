@@ -324,28 +324,23 @@ const FIELD_MAP = [
   },
   {
     patterns: [
-      /current\s*(?:ctc|salary|compensation)/i,
-      /present\s*(?:ctc|salary)/i,
-      /annual\s*(?:ctc|salary)/i,
-      /salary\s*expectation/i,
-      /desired\s*pay/i,
-      /\bctc\b/i,
-      /\blpa\b/i,
-      /cost\s*to\s*company/i,
-      /what\s+is\s+your.*(?:ctc|salary|package)/i,
-      /how\s+much.*(?:earn|ctc|salary|make)/i,
-      /monthly\s+or\s+annual\s+compensation/i,
-      /\blacs?\s+per\s+annum\b/i,
-      /\blakhs?\s+per\s+annum\b/i,
+      // STRICT: only match when the prompt explicitly says current/present.
+      /(?:current|present)\s*(?:ctc|salary|compensation|pay|package|remuneration)/i,
+      /(?:current|present)\s*(?:annual|yearly|monthly)\s*(?:ctc|salary|compensation|pay)/i,
+      /(?:current|present)\s*(?:total\s*)?comp(?:ensation)?/i,
+      /(?:current|present)\s*(?:cost\s*to\s*company|ctc)/i,
+      /please\s+enter\s+your\s+current\s*(?:ctc|salary|compensation)/i,
     ],
     key: "currentCtc",
   },
   {
     patterns: [
-      /expected\s*(?:ctc|salary|compensation)/i,
-      /desired\s*(?:salary|ctc)/i,
-      /expected\s*lpa/i,
-      /ask(?:ing|ed)?\s*(?:for|)\s*(?:ctc|salary|lpa)/i,
+      // STRICT: only match when the prompt explicitly says expected/desired/etc.
+      /(?:expected|desired|target|preferred)\s*(?:ctc|salary|compensation|pay|package|remuneration)/i,
+      /(?:expected|desired|target|preferred)\s*(?:annual|yearly|monthly)\s*(?:ctc|salary|compensation|pay)/i,
+      /salary\s*(?:expectation|expectations)/i,
+      /(?:salary|comp(?:ensation)?)\s*(?:expectation|range)/i,
+      /please\s+enter\s+your\s+expected\s*(?:ctc|salary|compensation)/i,
     ],
     key: "expectedSalary",
   },
@@ -364,6 +359,15 @@ const FIELD_MAP = [
       /experience\s+in\s+b2b/i,
     ],
     key: "yearsOfExperience",
+  },
+  {
+    patterns: [
+      /additional\s+months?\s+of\s+(?:professional\s+)?experience/i,
+      /total\s+additional\s+months?\s+of\s+(?:professional\s+)?experience/i,
+      /months?\s+of\s+(?:professional\s+)?experience/i,
+      /experience\s+in\s+months?/i,
+    ],
+    key: "monthsOfExperience",
   },
   {
     patterns: [/notice\s*period/i, /serving\s*notice/i, /how\s*soon\s*can\s*you\s*start/i],
@@ -386,7 +390,17 @@ const FIELD_MAP = [
     key: "currentTitle",
   },
   {
-    patterns: [/\bcity\b/i, /\blocation\b/i, /current\s*(?:city|location)/i, /preferred\s*location/i, /address/i],
+    patterns: [
+      /\bcity\b/i,
+      /\blocation\b/i,
+      /current\s*(?:city|location)/i,
+      /preferred\s*location/i,
+      /(?:current|present)\s*(?:location|city|residence|residing\s*location)/i,
+      /where\s+are\s+you\s+(?:currently\s+)?located/i,
+      /city\s*(?:of\s+)?residence/i,
+      /place\s+of\s+residence/i,
+      /address/i,
+    ],
     key: "location",
   },
   {
@@ -435,7 +449,35 @@ function resolveValue(key, resumeData, fallback) {
 
   switch (key) {
     case "yearsOfExperience":
-      return String(resumeData.experience?.years ?? fallback ?? "0");
+      try {
+        const raw = resumeData.experience?.years ?? fallback ?? "0";
+        const n = Number(String(raw).trim());
+        if (Number.isFinite(n)) return String(Math.max(0, Math.floor(n)));
+        return String(raw);
+      } catch {
+        return String(resumeData.experience?.years ?? fallback ?? "0");
+      }
+    case "monthsOfExperience": {
+      try {
+        const direct = resumeData.experience?.months;
+        if (direct != null && String(direct).trim() !== "") {
+          const m = Number(String(direct).trim());
+          if (Number.isFinite(m)) return String(Math.max(0, Math.min(11, Math.round(m))));
+          return String(direct).trim();
+        }
+
+        const rawYears = resumeData.experience?.years;
+        const y = Number(String(rawYears ?? "").trim());
+        if (Number.isFinite(y)) {
+          const frac = y - Math.floor(y);
+          const months = Math.round(frac * 12);
+          return String(Math.max(0, Math.min(11, months)));
+        }
+      } catch {
+        /* ignore */
+      }
+      return String(fallback ?? "0");
+    }
     case "currentCompany": {
       const direct = resumeData.experience?.currentCompany;
       if (direct && String(direct).trim()) return String(direct).trim();
@@ -532,6 +574,11 @@ function fillTextField(field, resumeData, hooks, labelOverride) {
     value = resolveValue(mapped.key, resumeData, mapped.fallback);
     valueKey = mapped.key;
     if (!value) {
+      // Avoid cross-filling sensitive compensation fields (e.g. expected salary
+      // should not be guessed from current CTC, and vice versa).
+      if (mapped.key === "currentCtc" || mapped.key === "expectedSalary") {
+        return false;
+      }
       const inferred = inferGenericTextAnswer(label, resumeData);
       if (inferred && inferred.value) {
         value = inferred.value;
@@ -614,9 +661,18 @@ function fillDropdown(select, resumeData, hooks) {
     ? resolveValue(mapped.key, resumeData, mapped.fallback)
     : "";
 
-  const options = Array.from(select.options).filter(
-    (o) => o.value && o.value !== "" && !o.disabled
-  );
+  const placeholderRe =
+    /select an option|choose(?:\s+one)?|please\s+select|--|^-\s*-$/i;
+  const options = Array.from(select.options).filter((o) => {
+    if (!o || o.disabled) return false;
+    const value = String(o.value || "").trim();
+    const text = String(o.textContent || "").replace(/\s+/g, " ").trim();
+    if (!value) return false;
+    if (!text) return true;
+    if (placeholderRe.test(text)) return false;
+    if (placeholderRe.test(value)) return false;
+    return true;
+  });
 
   const emitMatch = (key, valueForLog) => {
     if (!hooks || typeof hooks.onMatch !== "function") return;

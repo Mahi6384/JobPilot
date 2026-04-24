@@ -84,6 +84,23 @@
       ],
       "js": ["content-scripts/bridge.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://*.workday.com/*",
+        "*://*.myworkdayjobs.com/*",
+        "https://job-boards.greenhouse.io/*",
+        "https://boards.greenhouse.io/*",
+        "https://jobs.lever.co/*"
+      ],
+      "js": [
+        "utils/dom.js",
+        "utils/resolveLabel.js",
+        "utils/formFiller.js",
+        "utils/panelKernel.js",
+        "content-scripts/generic-forms.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
 

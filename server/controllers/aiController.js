@@ -16,6 +16,13 @@ async function callOpenAIChatCompletions({ apiKey, baseUrl, model, messages }) {
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      // Optional OpenRouter attribution headers (safe to send to OpenAI too)
+      ...(process.env.OPENROUTER_SITE_URL
+        ? { "HTTP-Referer": String(process.env.OPENROUTER_SITE_URL) }
+        : {}),
+      ...(process.env.OPENROUTER_APP_NAME
+        ? { "X-Title": String(process.env.OPENROUTER_APP_NAME) }
+        : {}),
     },
     body: JSON.stringify({
       model,
@@ -57,10 +64,11 @@ async function generateAnswer(req, res) {
   }
 
   const provider = String(process.env.AI_PROVIDER || "openai").toLowerCase();
+  const isOpenAICompatible = provider === "openai" || provider === "openrouter";
 
   try {
     // Only one provider for now; keep API stable for extension.
-    if (provider !== "openai") {
+    if (!isOpenAICompatible) {
       return res.status(501).json({
         success: false,
         message: `AI provider not supported: ${provider}`,
@@ -68,17 +76,30 @@ async function generateAnswer(req, res) {
       });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    // Support OpenRouter without forcing env renames.
+    const hasOpenAIKey = Boolean(process.env.OPENAI_API_KEY);
+    const hasOpenRouterKey = Boolean(process.env.OPENROUTER_API_KEY);
+    const usingOpenRouterKey = !hasOpenAIKey && hasOpenRouterKey;
+    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
       return res.status(501).json({
         success: false,
-        message: "OPENAI_API_KEY not configured",
+        message: "OPENAI_API_KEY (or OPENROUTER_API_KEY) not configured",
         answer: FALLBACK_ANSWER,
       });
     }
 
-    const baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com";
-    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+    const baseUrl =
+      process.env.OPENAI_BASE_URL ||
+      (provider === "openrouter" || usingOpenRouterKey
+        ? "https://openrouter.ai/api"
+        : null) ||
+      "https://api.openai.com";
+
+    const model =
+      process.env.OPENAI_MODEL ||
+      process.env.OPENROUTER_MODEL ||
+      "gpt-4o-mini";
 
     const system = [
       "You are helping a candidate answer a job application question.",

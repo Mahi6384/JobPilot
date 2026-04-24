@@ -25,17 +25,27 @@ const app = express();
 // Middleware
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  "https://jobpilot-wheat.vercel.app",
-  "http://localhost:5173",
-  "chrome-extension://emjjjomjhdlnbdlggkdchagheghfeenk",
-].filter(Boolean);
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true; // allow server-to-server / curl / health checks
+
+  // Allow any Vercel preview/prod subdomain (tight enough for this app)
+  if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) return true;
+
+  // Explicit known origins (local + extension + optional env var)
+  const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    "https://jobpilot-wheat.vercel.app",
+    "http://localhost:5173",
+    "chrome-extension://emjjjomjhdlnbdlggkdchagheghfeenk",
+  ].filter(Boolean);
+
+  return allowedOrigins.includes(origin);
+};
 
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
@@ -44,6 +54,9 @@ app.use(
     credentials: true,
   }),
 );
+
+// Ensure preflight requests always get a CORS response
+app.options("*", cors());
 
 // Routes
 app.use("/api/auth", authRoutes);

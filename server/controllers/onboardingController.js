@@ -162,11 +162,6 @@ const STEP_FIELDS = {
     "currentJobTitle",
     "currentCompany",
   ],
-  5: ["address", "socials"],
-  6: ["workEligibility"],
-  7: ["experienceEntries"],
-  8: ["educationEntries"],
-  9: ["eeo"],
 };
 
 function pickStepFields(data, step) {
@@ -174,7 +169,7 @@ function pickStepFields(data, step) {
   STEP_FIELDS[step].forEach((key) => {
     if (data[key] !== undefined) fields[key] = data[key];
   });
-  if (step === 9) {
+  if (step === 4) {
     fields.onboardingStatus = "completed";
   }
   return fields;
@@ -223,7 +218,7 @@ const getOnboardingStatus = async (req, res) => {
 const saveStep = async (req, res) => {
   try {
     const step = parseInt(req.params.stepNumber);
-    if (step < 1 || step > 9) {
+    if (step < 1 || step > 4) {
       return res.status(400).json({ success: false, message: "Invalid step number" });
     }
 
@@ -234,10 +229,10 @@ const saveStep = async (req, res) => {
 
     const updateFields = pickStepFields(req.body, step);
 
-    if (step === 7 && updateFields.experienceEntries) {
+    if (step === 4 && updateFields.experienceEntries) {
       updateFields.experienceEntries = normalizeExperienceEntries(updateFields.experienceEntries);
     }
-    if (step === 8 && updateFields.educationEntries) {
+    if (step === 4 && updateFields.educationEntries) {
       updateFields.educationEntries = normalizeEducationEntries(updateFields.educationEntries);
     }
 
@@ -250,7 +245,7 @@ const saveStep = async (req, res) => {
     logger.info(`User ${req.userId} completed onboarding step ${step}`);
 
     // On final step, trigger scraping if needed
-    if (step === 9 && user.targetJobTitle) {
+    if (step === 4 && user.targetJobTitle) {
       await triggerScrapeIfNeeded(user);
     }
 
@@ -670,7 +665,6 @@ function computeCurrentStep(user) {
       user.currentLPA !== undefined && user.yearsOfExperience !== undefined) step = 3;
   if (user.targetJobTitle && user.expectedLPA !== undefined &&
       user.preferredLocations?.length > 0 && user.jobType) step = 4;
-  if (user.skills?.length > 0) step = 5;
   return step;
 }
 

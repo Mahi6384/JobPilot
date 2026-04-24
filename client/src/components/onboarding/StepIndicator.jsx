@@ -7,11 +7,6 @@ function StepIndicator({ currentStep }) {
     { number: 2, title: "Current Position" },
     { number: 3, title: "Job Preferences" },
     { number: 4, title: "Skills & Resume" },
-    { number: 5, title: "Address & Socials" },
-    { number: 6, title: "Eligibility" },
-    { number: 7, title: "Experience" },
-    { number: 8, title: "Education" },
-    { number: 9, title: "EEO (Optional)" },
   ];
 
   return (

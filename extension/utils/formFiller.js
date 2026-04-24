@@ -8,6 +8,297 @@ function _fieldLabelForLog(el) {
         "";
 }
 
+function _normalizeText(s) {
+  return String(s || "").replace(/\s+/g, " ").trim();
+}
+
+function _delay(ms) {
+  try {
+    if (typeof delay === "function") return delay(ms);
+  } catch {
+    /* ignore */
+  }
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function buildResumeText(resumeData) {
+  if (!resumeData || typeof resumeData !== "object") return "";
+  try {
+    const parts = [];
+    if (resumeData.name) parts.push(`Name: ${resumeData.name}`);
+    if (resumeData.email) parts.push(`Email: ${resumeData.email}`);
+    if (resumeData.phone) parts.push(`Phone: ${resumeData.phone}`);
+    if (resumeData.location) parts.push(`Location: ${resumeData.location}`);
+
+    const skills = Array.isArray(resumeData.skills) ? resumeData.skills : [];
+    if (skills.length) parts.push(`Skills: ${skills.slice(0, 40).join(", ")}`);
+
+    const exp = resumeData.experience || {};
+    if (exp.years != null) parts.push(`Experience: ${String(exp.years)} years`);
+    if (exp.currentTitle) parts.push(`Current title: ${exp.currentTitle}`);
+    if (exp.currentCompany) parts.push(`Current company: ${exp.currentCompany}`);
+
+    const entries = Array.isArray(exp.entries) ? exp.entries : [];
+    for (const e of entries.slice(0, 3)) {
+      if (!e || typeof e !== "object") continue;
+      const line = [
+        e.title ? String(e.title) : "",
+        e.company ? String(e.company) : "",
+        e.description ? String(e.description) : "",
+      ]
+        .filter(Boolean)
+        .join(" — ");
+      if (line) parts.push(`Experience: ${line}`);
+    }
+
+    const edu = Array.isArray(resumeData.education) ? resumeData.education : [];
+    for (const e of edu.slice(0, 2)) {
+      if (!e || typeof e !== "object") continue;
+      const line = [
+        e.school ? String(e.school) : "",
+        e.degree ? String(e.degree) : "",
+        e.fieldOfStudy ? String(e.fieldOfStudy) : "",
+      ]
+        .filter(Boolean)
+        .join(" — ");
+      if (line) parts.push(`Education: ${line}`);
+    }
+
+    return _normalizeText(parts.join("\n"));
+  } catch {
+    return "";
+  }
+}
+
+function _isNumericLikeField(field) {
+  if (!field) return false;
+  const t = String(field.type || "").toLowerCase();
+  if (t === "number" || t === "range") return true;
+  const im = String(field.getAttribute?.("inputmode") || "").toLowerCase();
+  if (im === "numeric" || im === "decimal") return true;
+  const pat = String(field.getAttribute?.("pattern") || "");
+  if (/\d|decimal|number|numeric/i.test(pat)) return true;
+  return false;
+}
+
+function _isLongAnswerField(field) {
+  if (!field) return false;
+  if (String(field.tagName || "").toUpperCase() === "TEXTAREA") return true;
+  if (String(field.getAttribute?.("aria-multiline") || "").toLowerCase() === "true")
+    return true;
+
+  // Some ATS use long text inputs; treat as long if maxLength is large.
+  const maxLenRaw = field.getAttribute?.("maxlength");
+  const maxLen = maxLenRaw != null ? Number(maxLenRaw) : NaN;
+  if (Number.isFinite(maxLen) && maxLen >= 120) return true;
+  return false;
+}
+
+function shouldUseAI(field, labelText) {
+  // Only consider long-answer fields.
+  if (!_isLongAnswerField(field)) return false;
+
+  // Do not use AI for numeric-like fields.
+  if (_isNumericLikeField(field)) return false;
+
+  const label = _normalizeText(labelText);
+  if (!label || label.length < 8) return false;
+
+  const lower = label.toLowerCase();
+
+  // Avoid common simple fields even if they are rendered oddly.
+  const simpleBlock = [
+    /\bcity\b/i,
+    /\bpincode\b/i,
+    /\bpin\s*code\b/i,
+    /\bzip\b/i,
+    /\bpostal\b/i,
+    /\bstate\b/i,
+    /\bcountry\b/i,
+    /\baddress\b/i,
+    /\blinkedin\b/i,
+    /\bgithub\b/i,
+    /\bportfolio\b/i,
+    /\bwebsite\b/i,
+    /\burl\b/i,
+    /\bphone\b/i,
+    /\bemail\b/i,
+    /\bname\b/i,
+  ];
+  if (simpleBlock.some((re) => re.test(lower))) return false;
+
+  // Trigger only on question-like prompts.
+  const triggers = [
+    /\bwhy\b/i,
+    /\bdescribe\b/i,
+    /\btell\b/i,
+    /\bexplain\b/i,
+    /\bexperience\b/i,
+    /\bproject\b/i,
+    /\bmotivation\b/i,
+  ];
+  return triggers.some((re) => re.test(lower));
+}
+
+async function _apiGenerateAnswer(payload) {
+  // Prefer injected apiCall (extension utils/api.js). Keep a minimal fallback if not present.
+  if (typeof apiCall === "function") {
+    const resp = await apiCall("/ai/generate-answer", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    return resp?.answer || "";
+  }
+
+  // Fallback: attempt direct fetch by reading storage (still works inside content script).
+  const API_URLS = {
+    prod: "https://jobpilot-production-3ba1.up.railway.app/api",
+    dev: "http://localhost:5000/api",
+  };
+  const [cfgResult, tokenResult] = await Promise.all([
+    chrome.storage.local.get("jpConfig"),
+    chrome.storage.local.get("authToken"),
+  ]);
+  const mode = cfgResult.jpConfig?.apiMode || "prod";
+  const base = API_URLS[mode] || API_URLS.prod;
+  const token = tokenResult.authToken;
+
+  const resp = await fetch(`${base}/ai/generate-answer`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await resp.json().catch(() => ({}));
+  return data?.answer || "";
+}
+
+async function fillLongAnswerWithAI(field, labelText, resumeData, jobContext, hooks) {
+  try {
+    if (!field || !field.isConnected) return false;
+    if (field.value && String(field.value).trim() !== "") return false; // never overwrite
+
+    const label = _normalizeText(labelText || _fieldLabelForLog(field));
+    if (!shouldUseAI(field, label)) {
+      if (hooks && typeof hooks.onSkip === "function") {
+        try {
+          hooks.onSkip({ kind: "ai", field, label, reason: "shouldUseAI_false" });
+        } catch {
+          /* ignore */
+        }
+      }
+      return false;
+    }
+
+    // Only use AI if we truly cannot fill from known data.
+    const mapped = matchFieldToKey(label);
+    if (mapped) {
+      const v = resolveValue(mapped.key, resumeData, mapped.fallback);
+      if (v) return false;
+    }
+    const inferred = inferGenericTextAnswer(label, resumeData);
+    if (inferred && inferred.value) return false;
+
+    const resumeText = buildResumeText(resumeData);
+    if (!resumeText) {
+      if (hooks && typeof hooks.onSkip === "function") {
+        try {
+          hooks.onSkip({ kind: "ai", field, label, reason: "no_resumeText" });
+        } catch {
+          /* ignore */
+        }
+      }
+      return false;
+    }
+
+    if (hooks && typeof hooks.onMatch === "function") {
+      try {
+        hooks.onMatch({
+          kind: "ai",
+          field,
+          label,
+          key: "ai_generate_answer",
+          value: "(request)",
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const payload = {
+      question: label,
+      resumeText,
+      jobTitle: jobContext?.jobTitle || null,
+      companyName: jobContext?.companyName || null,
+      jobDescription: jobContext?.jobDescription || null,
+    };
+
+    let answer = "";
+    try {
+      answer = _normalizeText(await _apiGenerateAnswer(payload));
+    } catch {
+      answer = "";
+    }
+
+    if (!answer) answer = "Looking forward to discussing this in detail.";
+
+    // Human-ish typing (very light): set progressively for textareas.
+    if (typeof setNativeValue === "function") {
+      try {
+        field.focus?.();
+      } catch {
+        /* ignore */
+      }
+      if (String(field.tagName || "").toUpperCase() === "TEXTAREA" && answer.length <= 900) {
+        let cur = "";
+        for (const ch of answer) {
+          cur += ch;
+          setNativeValue(field, cur);
+          await _delay(12 + Math.floor(Math.random() * 18));
+        }
+      } else {
+        setNativeValue(field, answer);
+      }
+    } else {
+      field.value = answer;
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    if (hooks && typeof hooks.onFill === "function") {
+      try {
+        hooks.onFill({
+          kind: "ai",
+          field,
+          label,
+          key: "ai_generate_answer",
+          value: answer,
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+
+    return true;
+  } catch (e) {
+    if (hooks && typeof hooks.onSkip === "function") {
+      try {
+        hooks.onSkip({
+          kind: "ai",
+          field,
+          label: _fieldLabelForLog(field),
+          reason: `ai_error:${e?.message || "unknown"}`,
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+    return false;
+  }
+}
+
 const FIELD_MAP = [
   {
     patterns: [/full\s*name/i, /your\s*name/i, /^name$/i, /candidate\s*name/i, /applicant\s*name/i, /first\s*(?:and|&)?\s*last\s*name/i],
@@ -33,28 +324,23 @@ const FIELD_MAP = [
   },
   {
     patterns: [
-      /current\s*(?:ctc|salary|compensation)/i,
-      /present\s*(?:ctc|salary)/i,
-      /annual\s*(?:ctc|salary)/i,
-      /salary\s*expectation/i,
-      /desired\s*pay/i,
-      /\bctc\b/i,
-      /\blpa\b/i,
-      /cost\s*to\s*company/i,
-      /what\s+is\s+your.*(?:ctc|salary|package)/i,
-      /how\s+much.*(?:earn|ctc|salary|make)/i,
-      /monthly\s+or\s+annual\s+compensation/i,
-      /\blacs?\s+per\s+annum\b/i,
-      /\blakhs?\s+per\s+annum\b/i,
+      // STRICT: only match when the prompt explicitly says current/present.
+      /(?:current|present)\s*(?:ctc|salary|compensation|pay|package|remuneration)/i,
+      /(?:current|present)\s*(?:annual|yearly|monthly)\s*(?:ctc|salary|compensation|pay)/i,
+      /(?:current|present)\s*(?:total\s*)?comp(?:ensation)?/i,
+      /(?:current|present)\s*(?:cost\s*to\s*company|ctc)/i,
+      /please\s+enter\s+your\s+current\s*(?:ctc|salary|compensation)/i,
     ],
     key: "currentCtc",
   },
   {
     patterns: [
-      /expected\s*(?:ctc|salary|compensation)/i,
-      /desired\s*(?:salary|ctc)/i,
-      /expected\s*lpa/i,
-      /ask(?:ing|ed)?\s*(?:for|)\s*(?:ctc|salary|lpa)/i,
+      // STRICT: only match when the prompt explicitly says expected/desired/etc.
+      /(?:expected|desired|target|preferred)\s*(?:ctc|salary|compensation|pay|package|remuneration)/i,
+      /(?:expected|desired|target|preferred)\s*(?:annual|yearly|monthly)\s*(?:ctc|salary|compensation|pay)/i,
+      /salary\s*(?:expectation|expectations)/i,
+      /(?:salary|comp(?:ensation)?)\s*(?:expectation|range)/i,
+      /please\s+enter\s+your\s+expected\s*(?:ctc|salary|compensation)/i,
     ],
     key: "expectedSalary",
   },
@@ -73,6 +359,15 @@ const FIELD_MAP = [
       /experience\s+in\s+b2b/i,
     ],
     key: "yearsOfExperience",
+  },
+  {
+    patterns: [
+      /additional\s+months?\s+of\s+(?:professional\s+)?experience/i,
+      /total\s+additional\s+months?\s+of\s+(?:professional\s+)?experience/i,
+      /months?\s+of\s+(?:professional\s+)?experience/i,
+      /experience\s+in\s+months?/i,
+    ],
+    key: "monthsOfExperience",
   },
   {
     patterns: [/notice\s*period/i, /serving\s*notice/i, /how\s*soon\s*can\s*you\s*start/i],
@@ -95,7 +390,17 @@ const FIELD_MAP = [
     key: "currentTitle",
   },
   {
-    patterns: [/\bcity\b/i, /\blocation\b/i, /current\s*(?:city|location)/i, /preferred\s*location/i, /address/i],
+    patterns: [
+      /\bcity\b/i,
+      /\blocation\b/i,
+      /current\s*(?:city|location)/i,
+      /preferred\s*location/i,
+      /(?:current|present)\s*(?:location|city|residence|residing\s*location)/i,
+      /where\s+are\s+you\s+(?:currently\s+)?located/i,
+      /city\s*(?:of\s+)?residence/i,
+      /place\s+of\s+residence/i,
+      /address/i,
+    ],
     key: "location",
   },
   {
@@ -144,7 +449,35 @@ function resolveValue(key, resumeData, fallback) {
 
   switch (key) {
     case "yearsOfExperience":
-      return String(resumeData.experience?.years ?? fallback ?? "0");
+      try {
+        const raw = resumeData.experience?.years ?? fallback ?? "0";
+        const n = Number(String(raw).trim());
+        if (Number.isFinite(n)) return String(Math.max(0, Math.floor(n)));
+        return String(raw);
+      } catch {
+        return String(resumeData.experience?.years ?? fallback ?? "0");
+      }
+    case "monthsOfExperience": {
+      try {
+        const direct = resumeData.experience?.months;
+        if (direct != null && String(direct).trim() !== "") {
+          const m = Number(String(direct).trim());
+          if (Number.isFinite(m)) return String(Math.max(0, Math.min(11, Math.round(m))));
+          return String(direct).trim();
+        }
+
+        const rawYears = resumeData.experience?.years;
+        const y = Number(String(rawYears ?? "").trim());
+        if (Number.isFinite(y)) {
+          const frac = y - Math.floor(y);
+          const months = Math.round(frac * 12);
+          return String(Math.max(0, Math.min(11, months)));
+        }
+      } catch {
+        /* ignore */
+      }
+      return String(fallback ?? "0");
+    }
     case "currentCompany": {
       const direct = resumeData.experience?.currentCompany;
       if (direct && String(direct).trim()) return String(direct).trim();
@@ -241,6 +574,11 @@ function fillTextField(field, resumeData, hooks, labelOverride) {
     value = resolveValue(mapped.key, resumeData, mapped.fallback);
     valueKey = mapped.key;
     if (!value) {
+      // Avoid cross-filling sensitive compensation fields (e.g. expected salary
+      // should not be guessed from current CTC, and vice versa).
+      if (mapped.key === "currentCtc" || mapped.key === "expectedSalary") {
+        return false;
+      }
       const inferred = inferGenericTextAnswer(label, resumeData);
       if (inferred && inferred.value) {
         value = inferred.value;
@@ -323,9 +661,18 @@ function fillDropdown(select, resumeData, hooks) {
     ? resolveValue(mapped.key, resumeData, mapped.fallback)
     : "";
 
-  const options = Array.from(select.options).filter(
-    (o) => o.value && o.value !== "" && !o.disabled
-  );
+  const placeholderRe =
+    /select an option|choose(?:\s+one)?|please\s+select|--|^-\s*-$/i;
+  const options = Array.from(select.options).filter((o) => {
+    if (!o || o.disabled) return false;
+    const value = String(o.value || "").trim();
+    const text = String(o.textContent || "").replace(/\s+/g, " ").trim();
+    if (!value) return false;
+    if (!text) return true;
+    if (placeholderRe.test(text)) return false;
+    if (placeholderRe.test(value)) return false;
+    return true;
+  });
 
   const emitMatch = (key, valueForLog) => {
     if (!hooks || typeof hooks.onMatch !== "function") return;
@@ -600,4 +947,13 @@ function fillAllFields(container, resumeData, hooks) {
   });
 
   return filled;
+}
+
+// Expose small helpers for platform scripts (LinkedIn/Workday).
+try {
+  globalThis.shouldUseAI = shouldUseAI;
+  globalThis.fillLongAnswerWithAI = fillLongAnswerWithAI;
+  globalThis.buildResumeText = buildResumeText;
+} catch {
+  /* ignore */
 }

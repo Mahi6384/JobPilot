@@ -47,7 +47,8 @@ function ExtensionStatus() {
 
   const downloadExtension = () => {
     const link = document.createElement("a");
-    link.href = "/JobPilot-Extension.zip";
+    // Cache-bust so users always get the newest ZIP (CDN/browser can otherwise reuse an old file).
+    link.href = `/JobPilot-Extension.zip?v=${Date.now()}`;
     link.download = "JobPilot-Extension.zip";
     document.body.appendChild(link);
     link.click();

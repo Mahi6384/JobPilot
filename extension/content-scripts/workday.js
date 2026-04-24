@@ -13,14 +13,23 @@ if (!globalThis.__JOBPILOT_WD_INIT__) {
 
   let _resumeData = null;
   let _resumeAttachment = null;
+  let _jobContext = null;
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.action !== "applyToJob") return;
 
     _resumeData = message.resumeData || null;
     _resumeAttachment = message.resumeAttachment || null;
+    _jobContext = message.jobContext || null;
 
-    withTimeout(runGuidedWorkdayFlow(), TIMEOUT_MS)
+    const mode = message.mode || "guided";
+
+    const runner =
+      mode === "oneShot"
+        ? runOneShotWorkdayFill()
+        : runGuidedWorkdayFlow();
+
+    withTimeout(runner, TIMEOUT_MS)
       .then((result) => sendResponse(result))
       .catch((err) =>
         sendResponse({ success: false, error: err?.message || String(err) })
@@ -28,6 +37,16 @@ if (!globalThis.__JOBPILOT_WD_INIT__) {
 
     return true;
   });
+
+  async function runOneShotWorkdayFill() {
+    // Do not navigate between stages; just fill what’s on-screen right now.
+    log.info("One-shot Workday fill", { url: location.href });
+    await ensurePageLoaded();
+    await delay(900);
+    await waitForStability();
+    const filled = await fillVisibleFields({ stage: getWorkdayStageLabel() });
+    return { success: true, message: "one_shot_filled", filled };
+  }
 
   async function runGuidedWorkdayFlow() {
     log.info("Starting guided Workday flow", {
@@ -193,6 +212,36 @@ if (!globalThis.__JOBPILOT_WD_INIT__) {
       log.warn("fillAllFields failed:", e?.message || String(e));
     }
 
+    // 3b) AI fallback for unknown long-answer questions (never overwrites).
+    try {
+      if (typeof fillLongAnswerWithAI === "function") {
+        const candidates = Array.from(
+          document.querySelectorAll("textarea, input[aria-multiline='true']")
+        );
+        for (const el of candidates) {
+          if (!el || !isVisible(el) || isDisabled(el)) continue;
+          if (String(el.value || "").trim()) continue;
+          const label = getFieldLikeLabel(el);
+          const did = await fillLongAnswerWithAI(
+            el,
+            label,
+            _resumeData,
+            _jobContext,
+            {
+              onSkip: (d) =>
+                log.info("AI skip", d?.reason || "", (d?.label || "").slice(0, 80)),
+            }
+          );
+          if (did) {
+            filled++;
+            await delay(150);
+          }
+        }
+      }
+    } catch (e) {
+      log.warn("AI long-answer fill failed:", e?.message || String(e));
+    }
+
     // 4) Nudge after fill (React-controlled inputs / validations)
     try {
       if (typeof nudgeFormAfterFill === "function") {
@@ -209,9 +258,14 @@ if (!globalThis.__JOBPILOT_WD_INIT__) {
     const entries = resumeData?.experience?.entries || [];
     if (!Array.isArray(entries) || entries.length === 0) return 0;
 
-    // Find an “Add Work Experience” style button
+    // Find an “Add Work Experience” style button (Workday varies widely).
     const addBtn =
+      findWorkdayAddButton(["work experience", "experience"]) ||
       queryButtonByText(["add", "work experience"]) ||
+      queryButtonByText(["add", "experience"]) ||
+      document.querySelector(
+        'button[aria-label*="add work experience" i], button[aria-label*="add experience" i]'
+      ) ||
       document.querySelector('[data-automation-id*="add-button" i]') ||
       null;
     if (!addBtn || !isVisible(addBtn) || isDisabled(addBtn)) return 0;
@@ -226,37 +280,101 @@ if (!globalThis.__JOBPILOT_WD_INIT__) {
 
       const e = entries[i] || {};
 
-      filled += fillIfEmpty(queryByAutomationNeedle("jobTitle", "input"), e.title);
-      filled += fillIfEmpty(queryByAutomationNeedle("companyName", "input"), e.company);
+      // Prefer automation needles, but fall back to label-based targeting.
+      // Workday often repeats the same automation-id per row; use i-th match (TESTREPO style).
+      const titleEl =
+        queryAllByWorkdayWrapperNeedle("jobTitle", "input")[i] ||
+        queryAllByAutomationNeedle("jobTitle", "input")[i] ||
+        queryAllByWorkdayWrapperNeedle("jobTitle", "input").slice(-1)[0] ||
+        queryAllByAutomationNeedle("jobTitle", "input").slice(-1)[0] ||
+        queryByAutomationNeedle("jobTitle", "input");
+      const companyEl =
+        queryAllByWorkdayWrapperNeedle("companyName", "input")[i] ||
+        queryAllByAutomationNeedle("companyName", "input")[i] ||
+        queryAllByWorkdayWrapperNeedle("companyName", "input").slice(-1)[0] ||
+        queryAllByAutomationNeedle("companyName", "input").slice(-1)[0] ||
+        queryByAutomationNeedle("companyName", "input");
+
+      filled += fillIfEmpty(titleEl, e.title);
+      filled += fillIfEmpty(companyEl, e.company);
+
+      // Workday "I currently work here" checkbox is often required to unlock end date fields.
+      if (e.isCurrent) {
+        const curCb =
+          queryAllByWorkdayWrapperNeedle("currentlyWorkHere", "input[type='checkbox']")[i] ||
+          queryAllByWorkdayWrapperNeedle("current", "input[type='checkbox']")[i] ||
+          queryAllByAutomationNeedle("currentlyWorkHere", "input[type='checkbox']")[i] ||
+          queryByAutomationNeedle("currentlyWorkHere", "input[type='checkbox']") ||
+          null;
+        if (curCb && !curCb.checked) {
+          try {
+            clickElement(curCb);
+            curCb.dispatchEvent(new Event("change", { bubbles: true }));
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+
+      filled += fillWorkdayEntryByLabels({
+        title: e.title,
+        company: e.company,
+        description: e.description,
+        startMonth: e.startMonth,
+        startYear: e.startYear,
+        endMonth: e.endMonth,
+        endYear: e.endYear,
+        isCurrent: e.isCurrent,
+      });
 
       // Dates: some Workday layouts use dateSectionMonth/year needles (like Autofill-Jobs)
       if (e.startMonth) {
         filled += fillIfEmpty(
-          queryByAutomationNeedle("startDate-dateSectionMonth", "input"),
+          queryAllByWorkdayWrapperNeedle("startDate-dateSectionMonth", "input")[i] ||
+            queryAllByAutomationNeedle("startDate-dateSectionMonth", "input")[i] ||
+            queryAllByWorkdayWrapperNeedle("startDate-dateSectionMonth", "input").slice(-1)[0] ||
+            queryAllByAutomationNeedle("startDate-dateSectionMonth", "input").slice(-1)[0] ||
+            queryByAutomationNeedle("startDate-dateSectionMonth", "input"),
           String(e.startMonth)
         );
       }
       if (e.startYear) {
         filled += fillIfEmpty(
-          queryByAutomationNeedle("startDate-dateSectionYear", "input"),
+          queryAllByWorkdayWrapperNeedle("startDate-dateSectionYear", "input")[i] ||
+            queryAllByAutomationNeedle("startDate-dateSectionYear", "input")[i] ||
+            queryAllByWorkdayWrapperNeedle("startDate-dateSectionYear", "input").slice(-1)[0] ||
+            queryAllByAutomationNeedle("startDate-dateSectionYear", "input").slice(-1)[0] ||
+            queryByAutomationNeedle("startDate-dateSectionYear", "input"),
           String(e.startYear)
         );
       }
       if (!e.isCurrent && e.endMonth) {
         filled += fillIfEmpty(
-          queryByAutomationNeedle("endDate-dateSectionMonth", "input"),
+          queryAllByWorkdayWrapperNeedle("endDate-dateSectionMonth", "input")[i] ||
+            queryAllByAutomationNeedle("endDate-dateSectionMonth", "input")[i] ||
+            queryAllByWorkdayWrapperNeedle("endDate-dateSectionMonth", "input").slice(-1)[0] ||
+            queryAllByAutomationNeedle("endDate-dateSectionMonth", "input").slice(-1)[0] ||
+            queryByAutomationNeedle("endDate-dateSectionMonth", "input"),
           String(e.endMonth)
         );
       }
       if (!e.isCurrent && e.endYear) {
         filled += fillIfEmpty(
-          queryByAutomationNeedle("endDate-dateSectionYear", "input"),
+          queryAllByWorkdayWrapperNeedle("endDate-dateSectionYear", "input")[i] ||
+            queryAllByAutomationNeedle("endDate-dateSectionYear", "input")[i] ||
+            queryAllByWorkdayWrapperNeedle("endDate-dateSectionYear", "input").slice(-1)[0] ||
+            queryAllByAutomationNeedle("endDate-dateSectionYear", "input").slice(-1)[0] ||
+            queryByAutomationNeedle("endDate-dateSectionYear", "input"),
           String(e.endYear)
         );
       }
       if (e.description) {
         filled += fillIfEmpty(
-          queryByAutomationNeedle("roleDescription", "textarea"),
+          queryAllByWorkdayWrapperNeedle("roleDescription", "textarea")[i] ||
+            queryAllByAutomationNeedle("roleDescription", "textarea")[i] ||
+            queryAllByWorkdayWrapperNeedle("roleDescription", "textarea").slice(-1)[0] ||
+            queryAllByAutomationNeedle("roleDescription", "textarea").slice(-1)[0] ||
+            queryByAutomationNeedle("roleDescription", "textarea"),
           String(e.description)
         );
       }
@@ -280,7 +398,12 @@ if (!globalThis.__JOBPILOT_WD_INIT__) {
     if (edus.length === 0) return 0;
 
     // Look for Add Education button
-    const addBtn = queryButtonByText(["add", "education"]) || null;
+    const addBtn =
+      findWorkdayAddButton(["education"]) ||
+      queryButtonByText(["add", "education"]) ||
+      document.querySelector('button[aria-label*="add education" i]') ||
+      document.querySelector('[data-automation-id*="add-button" i]') ||
+      null;
     if (!addBtn || !isVisible(addBtn) || isDisabled(addBtn)) return 0;
 
     const max = Math.min(edus.length, 1);
@@ -291,13 +414,334 @@ if (!globalThis.__JOBPILOT_WD_INIT__) {
       await delay(1200);
       const e = edus[i] || {};
 
-      filled += fillIfEmpty(queryByAutomationNeedle("schoolName", "input"), e.school || e);
-      filled += fillIfEmpty(queryByAutomationNeedle("degree", "input"), e.degree);
-      filled += fillIfEmpty(queryByAutomationNeedle("fieldOfStudy", "input"), e.fieldOfStudy);
-      if (e.gpa) filled += fillIfEmpty(queryByAutomationNeedle("gradeAverage", "input"), e.gpa);
+      const schoolEl =
+        queryAllByWorkdayWrapperNeedle("schoolName", "input")[i] ||
+        queryAllByAutomationNeedle("schoolName", "input")[i] ||
+        queryAllByWorkdayWrapperNeedle("schoolName", "input").slice(-1)[0] ||
+        queryAllByAutomationNeedle("schoolName", "input").slice(-1)[0] ||
+        queryByAutomationNeedle("schoolName", "input");
+      const degreeEl =
+        queryAllByWorkdayWrapperNeedle("degree", "input")[i] ||
+        queryAllByAutomationNeedle("degree", "input")[i] ||
+        queryAllByWorkdayWrapperNeedle("degree", "input").slice(-1)[0] ||
+        queryAllByAutomationNeedle("degree", "input").slice(-1)[0] ||
+        queryByAutomationNeedle("degree", "input");
+      const fieldEl =
+        queryAllByWorkdayWrapperNeedle("fieldOfStudy", "input")[i] ||
+        queryAllByAutomationNeedle("fieldOfStudy", "input")[i] ||
+        queryAllByWorkdayWrapperNeedle("fieldOfStudy", "input").slice(-1)[0] ||
+        queryAllByAutomationNeedle("fieldOfStudy", "input").slice(-1)[0] ||
+        queryByAutomationNeedle("fieldOfStudy", "input");
+      const gpaEl =
+        queryAllByWorkdayWrapperNeedle("gradeAverage", "input")[i] ||
+        queryAllByAutomationNeedle("gradeAverage", "input")[i] ||
+        queryAllByWorkdayWrapperNeedle("gradeAverage", "input").slice(-1)[0] ||
+        queryAllByAutomationNeedle("gradeAverage", "input").slice(-1)[0] ||
+        queryByAutomationNeedle("gradeAverage", "input");
+
+      filled += fillIfEmpty(schoolEl, e.school || e);
+      filled += fillIfEmpty(degreeEl, e.degree);
+      filled += fillIfEmpty(fieldEl, e.fieldOfStudy);
+      if (e.gpa) filled += fillIfEmpty(gpaEl, e.gpa);
+
+      filled += fillWorkdayEducationByLabels({
+        school: e.school,
+        degree: e.degree,
+        fieldOfStudy: e.fieldOfStudy,
+        gpa: e.gpa,
+        startMonth: e.startMonth,
+        startYear: e.startYear,
+        endMonth: e.endMonth,
+        endYear: e.endYear,
+      });
     }
 
     return filled;
+  }
+
+  function queryAllByAutomationNeedle(needle, selector) {
+    const n = String(needle || "").toLowerCase();
+    const res = [];
+    const els = document.querySelectorAll(selector);
+    for (const el of els) {
+      try {
+        const attrs = [
+          el.id,
+          el.name,
+          el.getAttribute("data-automation-id"),
+          el.getAttribute("data-automation-label"),
+          el.getAttribute("aria-label"),
+        ]
+          .filter(Boolean)
+          .map((x) => String(x).toLowerCase());
+        if (attrs.some((a) => a.includes(n) && !a.includes("phonecode"))) {
+          res.push(el);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    return res;
+  }
+
+  /**
+   * Workday commonly puts the stable identifier on a wrapper like:
+   *   <div data-automation-id="formField-roleDescription"> ... <textarea id="workExperience-31--roleDescription">
+   * So we query wrappers and then pull the inner input/textarea.
+   */
+  function queryAllByWorkdayWrapperNeedle(needle, innerSelector) {
+    try {
+      const n = String(needle || "").toLowerCase();
+      const selector =
+        `[data-automation-id*="formfield-${n}" i],` +
+        `[data-automation-id*="formField-${n}" i],` +
+        `[data-automation-id*="${n}" i]`;
+      const wrappers = Array.from(document.querySelectorAll(selector)).filter((w) =>
+        isVisible(w)
+      );
+      const out = [];
+      for (const w of wrappers) {
+        const el = w.querySelector(innerSelector);
+        if (el && isVisible(el) && !isDisabled(el)) out.push(el);
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  }
+
+  function findWorkdayAddButton(sectionKeywords) {
+    try {
+      const keys = (sectionKeywords || [])
+        .map((s) => normalizeText(s))
+        .filter(Boolean);
+      if (keys.length === 0) return null;
+
+      const buttons = Array.from(
+        document.querySelectorAll("button, [role='button'], a")
+      ).filter((b) => isVisible(b) && !isDisabled(b));
+
+      const nearbySectionText = (b) => {
+        try {
+          // Walk up a few ancestors and also check previous siblings for headings.
+          let el = b;
+          for (let i = 0; el && i < 8; i++, el = el.parentElement) {
+            if (!el) break;
+
+            const heading =
+              el.querySelector?.("h1,h2,h3,h4,legend,[role='heading'],[data-automation-label]") ||
+              null;
+            const ht = normalizeText(
+              heading?.textContent ||
+                heading?.getAttribute?.("data-automation-label") ||
+                ""
+            );
+            if (ht) return ht;
+
+            // Previous siblings often contain "Work Experience" heading in Workday.
+            let sib = el.previousElementSibling;
+            for (let j = 0; sib && j < 6; j++, sib = sib.previousElementSibling) {
+              const st = normalizeText(sib.textContent || "");
+              if (st && st.length <= 120) return st;
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+        return "";
+      };
+
+      const scoreBtn = (b) => {
+        const t = normalizeText(b.textContent || "");
+        const aria = normalizeText(b.getAttribute("aria-label") || "");
+        const aid = normalizeText(b.getAttribute("data-automation-id") || "");
+        const combined = `${t} ${aria} ${aid}`.trim();
+        if (!combined.includes("add")) return -1;
+
+        // Strong signal: aria-label contains the section keyword.
+        if (keys.some((k) => aria.includes(k))) return 100;
+        if (keys.some((k) => t.includes(k))) return 80;
+
+        // Medium signal: nearby container heading contains keyword.
+        const container =
+          b.closest("section, fieldset, [data-automation-id], [class*='section'], [class*='panel']") ||
+          b.parentElement;
+        const blob = normalizeText(
+          container?.querySelector?.("h1,h2,h3,h4,legend,label")?.textContent ||
+            container?.textContent ||
+            ""
+        );
+        if (keys.some((k) => blob.includes(k))) return 60;
+
+        // Workday often renders just "Add" — use nearby heading/sibling text.
+        const near = nearbySectionText(b);
+        if (near && keys.some((k) => near.includes(k))) return 70;
+
+        return 10;
+      };
+
+      let best = null;
+      let bestScore = 0;
+      for (const b of buttons) {
+        const s = scoreBtn(b);
+        if (s > bestScore) {
+          bestScore = s;
+          best = b;
+        }
+      }
+      return bestScore >= 50 ? best : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function fillWorkdayEntryByLabels(e) {
+    try {
+      if (!e || typeof e !== "object") return 0;
+      const root = document.documentElement;
+      const fields = Array.from(root.querySelectorAll("input, textarea")).filter(
+        (el) =>
+          isVisible(el) &&
+          !isDisabled(el) &&
+          !String(el.value || "").trim() &&
+          el.type !== "hidden" &&
+          el.type !== "file"
+      );
+
+      let filled = 0;
+
+      const labelOf = (el) => {
+        try {
+          if (typeof globalThis.getFieldLabel === "function") return normalizeText(globalThis.getFieldLabel(el));
+        } catch {}
+        return normalizeText(el.getAttribute("aria-label") || el.getAttribute("name") || el.id || "");
+      };
+
+      for (const el of fields) {
+        const label = labelOf(el);
+        if (!label) continue;
+
+        if (e.title && (label.includes("job title") || (label.includes("title") && !label.includes("subtitle")))) {
+          setNativeValueSafe(el, String(e.title));
+          filled++;
+          continue;
+        }
+        if (e.company && (label.includes("company") || label.includes("employer") || label.includes("organization"))) {
+          setNativeValueSafe(el, String(e.company));
+          filled++;
+          continue;
+        }
+        if (
+          e.description &&
+          (label.includes("description") || label.includes("responsibil") || label.includes("summary") || label.includes("role"))
+        ) {
+          setNativeValueSafe(el, String(e.description));
+          filled++;
+          continue;
+        }
+
+        // Date fields: keep very conservative; only fill if label clearly says month/year.
+        if (e.startMonth && label.includes("start") && label.includes("month")) {
+          setNativeValueSafe(el, String(e.startMonth));
+          filled++;
+          continue;
+        }
+        if (e.startYear && label.includes("start") && label.includes("year")) {
+          setNativeValueSafe(el, String(e.startYear));
+          filled++;
+          continue;
+        }
+        if (!e.isCurrent && e.endMonth && label.includes("end") && label.includes("month")) {
+          setNativeValueSafe(el, String(e.endMonth));
+          filled++;
+          continue;
+        }
+        if (!e.isCurrent && e.endYear && label.includes("end") && label.includes("year")) {
+          setNativeValueSafe(el, String(e.endYear));
+          filled++;
+          continue;
+        }
+      }
+
+      return filled;
+    } catch {
+      return 0;
+    }
+  }
+
+  function fillWorkdayEducationByLabels(ed) {
+    try {
+      if (!ed || typeof ed !== "object") return 0;
+      const root = document.documentElement;
+      const fields = Array.from(root.querySelectorAll("input, textarea")).filter(
+        (el) =>
+          isVisible(el) &&
+          !isDisabled(el) &&
+          !String(el.value || "").trim() &&
+          el.type !== "hidden" &&
+          el.type !== "file"
+      );
+
+      let filled = 0;
+
+      const labelOf = (el) => {
+        try {
+          if (typeof globalThis.getFieldLabel === "function") return normalizeText(globalThis.getFieldLabel(el));
+        } catch {}
+        return normalizeText(el.getAttribute("aria-label") || el.getAttribute("name") || el.id || "");
+      };
+
+      for (const el of fields) {
+        const label = labelOf(el);
+        if (!label) continue;
+
+        if (ed.school && (label.includes("school") || label.includes("university") || label.includes("institution"))) {
+          setNativeValueSafe(el, String(ed.school));
+          filled++;
+          continue;
+        }
+        if (ed.degree && label.includes("degree")) {
+          setNativeValueSafe(el, String(ed.degree));
+          filled++;
+          continue;
+        }
+        if (ed.fieldOfStudy && (label.includes("field") || label.includes("major") || label.includes("study"))) {
+          setNativeValueSafe(el, String(ed.fieldOfStudy));
+          filled++;
+          continue;
+        }
+        if (ed.gpa && (label.includes("gpa") || label.includes("grade") || label.includes("cgpa"))) {
+          setNativeValueSafe(el, String(ed.gpa));
+          filled++;
+          continue;
+        }
+
+        if (ed.startMonth && label.includes("start") && label.includes("month")) {
+          setNativeValueSafe(el, String(ed.startMonth));
+          filled++;
+          continue;
+        }
+        if (ed.startYear && label.includes("start") && label.includes("year")) {
+          setNativeValueSafe(el, String(ed.startYear));
+          filled++;
+          continue;
+        }
+        if (ed.endMonth && label.includes("end") && label.includes("month")) {
+          setNativeValueSafe(el, String(ed.endMonth));
+          filled++;
+          continue;
+        }
+        if (ed.endYear && label.includes("end") && label.includes("year")) {
+          setNativeValueSafe(el, String(ed.endYear));
+          filled++;
+          continue;
+        }
+      }
+
+      return filled;
+    } catch {
+      return 0;
+    }
   }
 
   function fillIfEmpty(el, value) {
@@ -344,6 +788,23 @@ if (!globalThis.__JOBPILOT_WD_INIT__) {
     const desiredByLabel = (label) => {
       const t = normalizeText(label);
       if (!t) return null;
+
+      // Workday “Application Questions” (like your screenshot) — safe defaults.
+      // Keep conservative: only answer when the question is clear.
+      const yes = "yes";
+      const no = "no";
+
+      if (t.includes("relocat")) return resumeData?.workEligibility?.willingToRelocate || yes;
+      if (t.includes("authorized to work") || (t.includes("authorized") && t.includes("country")))
+        return resumeData?.workEligibility?.authorizedToWork || yes;
+      if (t.includes("sponsor") || t.includes("visa") || t.includes("immigration"))
+        return resumeData?.workEligibility?.needsSponsorship || no;
+      if (t.includes("non-compete") || t.includes("noncompete") || t.includes("non solicitation"))
+        return no;
+      if (t.includes("government") && (t.includes("employee") || t.includes("employ")))
+        return no;
+      if (t.includes("workday system") || (t.includes("workday") && t.includes("current job")))
+        return no;
 
       // If user has explicit demographic values, those may be in resumeData;
       // otherwise, we prefer not to say.

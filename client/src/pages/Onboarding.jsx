@@ -7,10 +7,6 @@ import BasicInfoStep from "../components/onboarding/BasicInfoStep";
 import CurrentPositionStep from "../components/onboarding/CurrentPositionStep";
 import JobPreferencesStep from "../components/onboarding/JobPreferencesStep";
 import SkillsResumeStep from "../components/onboarding/SkillsResumeStep";
-import AddressSocialsSection from "../components/profile/AddressSocialsSection";
-import EligibilitySection from "../components/profile/EligibilitySection";
-import { ExperienceSection, EducationSection } from "../components/profile/RepeatingEntries";
-import EEOSection from "../components/profile/EEOSection";
 import Button from "../components/ui/Button";
 import { useToast } from "../components/ui/Toast";
 
@@ -118,12 +114,6 @@ function Onboarding() {
         if (!formData.skills?.length)
           newErrors.skills = "Add at least one skill";
         break;
-      case 5:
-      case 6:
-      case 7:
-      case 8:
-      case 9:
-        break;
     }
 
     setErrors(newErrors);
@@ -171,24 +161,6 @@ function Onboarding() {
             currentCompany: formData.currentCompany,
           };
           break;
-        case 5:
-          stepData = {
-            address: formData.address,
-            socials: formData.socials,
-          };
-          break;
-        case 6:
-          stepData = { workEligibility: formData.workEligibility };
-          break;
-        case 7:
-          stepData = { experienceEntries: formData.experienceEntries };
-          break;
-        case 8:
-          stepData = { educationEntries: formData.educationEntries };
-          break;
-        case 9:
-          stepData = { eeo: formData.eeo };
-          break;
       }
 
       const response = await axios.put(
@@ -224,13 +196,14 @@ function Onboarding() {
     const saved = await saveStep();
     if (!saved) return;
 
-    if (currentStep < 9) {
+    if (currentStep < 4) {
       setCurrentStep(currentStep + 1);
       setErrors({});
-    } else {
-      setFindingJobs(true);
-      window.dispatchEvent(new Event("authChange"));
+      return;
     }
+
+    setFindingJobs(true);
+    window.dispatchEvent(new Event("authChange"));
   };
 
   useEffect(() => {
@@ -302,41 +275,6 @@ function Onboarding() {
             formData={formData}
             setFormData={setFormData}
             errors={errors}
-          />
-        );
-      case 5:
-        return (
-          <AddressSocialsSection
-            formData={formData}
-            setFormData={setFormData}
-          />
-        );
-      case 6:
-        return (
-          <EligibilitySection
-            formData={formData}
-            setFormData={setFormData}
-          />
-        );
-      case 7:
-        return (
-          <ExperienceSection
-            formData={formData}
-            setFormData={setFormData}
-          />
-        );
-      case 8:
-        return (
-          <EducationSection
-            formData={formData}
-            setFormData={setFormData}
-          />
-        );
-      case 9:
-        return (
-          <EEOSection
-            formData={formData}
-            setFormData={setFormData}
           />
         );
       default:
@@ -414,7 +352,7 @@ function Onboarding() {
         <div className="text-center mb-8 animate-fade-in">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-400 text-sm font-medium mb-4">
             <Sparkles className="w-3.5 h-3.5" />
-            Step {currentStep} of 9
+            Step {currentStep} of 4
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">
             Complete Your Profile
@@ -444,11 +382,11 @@ function Onboarding() {
                 type="button"
                 variant="secondary"
                 onClick={async () => {
-                  if (currentStep < 9) {
+                  if (currentStep < 4) {
                     setCurrentStep(currentStep + 1);
                     return;
                   }
-                  // Persist step 9 so profile and onboardingStatus save; then continue.
+                  // Persist final step so profile and onboardingStatus save; then continue.
                   const saved = await saveStep();
                   if (!saved) return;
                   setFindingJobs(true);
@@ -465,7 +403,7 @@ function Onboarding() {
               loading={loading}
               size="lg"
             >
-              {currentStep === 9 ? "Complete Setup" : "Continue"}
+              {currentStep === 4 ? "Complete Setup" : "Continue"}
             </Button>
             </div>
           </div>

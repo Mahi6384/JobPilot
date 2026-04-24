@@ -22,6 +22,7 @@ const state = {
   resumeData: null,
   lastPoll: null,
   lastError: null,
+  stickyJobTabId: null,
 };
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -98,12 +99,28 @@ async function handleMessage(msg) {
     case "autofillCurrentTab":
       return await handleAutofillCurrentTab();
 
+    case "closeStickyJobTab":
+      return await handleCloseStickyJobTab();
+
     case "getProfileUrl":
       return await handleGetProfileUrl();
 
     default:
       return { error: "unknown_action" };
   }
+}
+
+async function handleCloseStickyJobTab() {
+  const tabId = state.stickyJobTabId;
+  if (!tabId) return { ok: true, closed: false };
+  try {
+    await chrome.tabs.remove(tabId);
+  } catch (e) {
+    return { error: e?.message || "close_failed" };
+  } finally {
+    state.stickyJobTabId = null;
+  }
+  return { ok: true, closed: true };
 }
 
 async function handleGetProfileUrl() {
@@ -149,11 +166,13 @@ async function handleAutofillCurrentTab() {
   const injectOk = await injectScripts(
     tabId,
     [
+      "utils/api.js",
       "utils/dom.js",
       "utils/resolveLabel.js",
       "utils/formFiller.js",
       "utils/panelKernel.js",
       "utils/resumeFile.js",
+      ...(isWorkday ? ["content-scripts/workday.js"] : []),
     ],
     { allFrames: isWorkday }
   );
@@ -164,6 +183,30 @@ async function handleAutofillCurrentTab() {
     resumeAttachment = await getResumeFileAsBase64();
   } catch (e) {
     logger.warn(`[JobPilot][Autofill] Resume not attached: ${e.message}`);
+  }
+
+  // Workday: use the dedicated content script in one-shot mode so it can:
+  // - click Add Experience/Education
+  // - fill listbox dropdown questions
+  // - fill AI long answers safely
+  if (isWorkday) {
+    try {
+      const resp = await sendMessageWithTimeout(
+        tabId,
+        {
+          action: "applyToJob",
+          resumeData: state.resumeData,
+          resumeAttachment,
+          jobContext: null,
+          mode: "oneShot",
+        },
+        45000
+      );
+      if (resp?.error) return { error: resp.error };
+      return { ok: true, filled: resp?.filled ?? 0, mode: "workday_oneShot" };
+    } catch (e) {
+      return { error: e?.message || "workday_autofill_failed" };
+    }
   }
 
   // Execute a one-shot fill inside the tab. No navigation / submit clicks.
@@ -286,6 +329,7 @@ function getSnapshot() {
     processed: state.processed,
     failed: state.failed,
     skipped: state.skipped,
+    stickyJobTabId: state.stickyJobTabId,
     currentJob: state.currentApp
       ? {
           id: state.currentApp._id,
@@ -414,6 +458,7 @@ async function processOneJob(application, jobUrl, platform, log) {
   log.step("status", "in_progress");
 
   const tab = await chrome.tabs.create({ url: jobUrl, active: false });
+  state.stickyJobTabId = tab?.id || null;
   log.info(`Tab ${tab.id} opened`);
 
   try {
@@ -458,7 +503,9 @@ async function processOneJob(application, jobUrl, platform, log) {
     } else if (isLinkedIn) {
       log.step("inject", "linkedin");
       await injectScripts(tab.id, [
+        "utils/api.js",
         "utils/dom.js",
+        "utils/resolveLabel.js",
         "utils/formFiller.js",
         "content-scripts/linkedin.js",
       ]);
@@ -467,6 +514,7 @@ async function processOneJob(application, jobUrl, platform, log) {
       await injectScripts(
         tab.id,
         [
+          "utils/api.js",
           "utils/dom.js",
           "utils/resolveLabel.js",
           "utils/formFiller.js",
@@ -479,6 +527,7 @@ async function processOneJob(application, jobUrl, platform, log) {
     } else if (isGreenhouse) {
       log.step("inject", "greenhouse");
       await injectScripts(tab.id, [
+        "utils/api.js",
         "utils/dom.js",
         "utils/resolveLabel.js",
         "utils/formFiller.js",
@@ -489,6 +538,7 @@ async function processOneJob(application, jobUrl, platform, log) {
     } else if (isLever) {
       log.step("inject", "lever");
       await injectScripts(tab.id, [
+        "utils/api.js",
         "utils/dom.js",
         "utils/resolveLabel.js",
         "utils/formFiller.js",
@@ -533,6 +583,11 @@ async function processOneJob(application, jobUrl, platform, log) {
           action: "applyToJob",
           resumeData: state.resumeData,
           resumeAttachment,
+          jobContext: {
+            jobTitle: application?.jobId?.title || null,
+            companyName: application?.jobId?.company || null,
+            jobDescription: application?.jobId?.description || null,
+          },
         },
         CONTENT_SCRIPT_TIMEOUT_MS,
         isLinkedIn ? 4 : 1
@@ -607,12 +662,18 @@ async function processOneJob(application, jobUrl, platform, log) {
       const keepOpenForDebug =
         /naukri\.com/i.test(jobUrl) && (await readNaukriTabDebugPause(tab.id));
 
-      if (keepOpenForDebug) {
+      const stickyTabs = Boolean(await getConfig("stickyTabs"));
+
+      if (keepOpenForDebug || stickyTabs) {
         _naukriDebugStopQueueAfterJob = true;
-        logger.info("[JobPilot][Debug] Auto-flow paused for manual debugging");
-        logger.info(
-          "[JobPilot][Debug] Naukri tab left open; remaining jobs in this batch were not started"
-        );
+        if (keepOpenForDebug) {
+          logger.info("[JobPilot][Debug] Auto-flow paused for manual debugging");
+          logger.info(
+            "[JobPilot][Debug] Naukri tab left open; remaining jobs in this batch were not started"
+          );
+        } else {
+          logger.info("[JobPilot][Sticky] Job tab kept open (stickyTabs enabled)");
+        }
         try {
           await chrome.tabs.update(tab.id, { active: true });
         } catch (e) {
@@ -620,6 +681,7 @@ async function processOneJob(application, jobUrl, platform, log) {
         }
       } else {
         await chrome.tabs.remove(tab.id);
+        if (state.stickyJobTabId === tab.id) state.stickyJobTabId = null;
       }
     } catch (e) {
       logger.warn(`Tab cleanup: ${e.message}`);

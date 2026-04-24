@@ -99,7 +99,3 @@ cd client
 npm run build:ext
 ```
 
-## Notes / Safety
-
-- **Do not commit `.env` files**. Keep secrets (DB URI, JWT secrets, OAuth secrets) out of git.
-- Extension permissions and allowed domains are defined in `extension/manifest.json`.

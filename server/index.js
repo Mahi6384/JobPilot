@@ -34,6 +34,9 @@ const parseCsv = (value) =>
 const isAllowedOrigin = (origin) => {
   if (!origin) return true; // allow server-to-server / curl / health checks
 
+  // MV3 extension popup / service worker fetch uses Origin: chrome-extension://<id>
+  if (/^chrome-extension:\/\//i.test(origin)) return true;
+
   // Allow any Vercel preview/prod subdomain (tight enough for this app)
   if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) return true;
 
@@ -49,21 +52,21 @@ const isAllowedOrigin = (origin) => {
   return allowedOrigins.includes(origin);
 };
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (isAllowedOrigin(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
-  }),
-);
+const corsOptions = {
+  origin(origin, callback) {
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+};
 
-// Ensure preflight requests always get a CORS response
-app.options("*", cors());
+app.use(cors(corsOptions));
+
+// Preflight must use the same origin rules as app.use(cors(...))
+app.options("*", cors(corsOptions));
 
 // Routes
 app.use("/api/auth", authRoutes);
